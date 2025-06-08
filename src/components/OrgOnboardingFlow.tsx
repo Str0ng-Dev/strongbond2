@@ -4,7 +4,6 @@ import StepOneOrgDetails from './orgOnboarding/StepOneOrgDetails';
 import StepTwoAdminUser from './orgOnboarding/StepTwoAdminUser';
 import StepThreePlanSelect from './orgOnboarding/StepThreePlanSelect';
 import StepFourConfirmation from './orgOnboarding/StepFourConfirmation';
-import ProgressIndicator from './ProgressIndicator';
 import { createOrganization, OrgOnboardingData, OrganizationResult } from '../utils/orgOnboarding';
 import { supabase } from '../lib/supabase';
 
@@ -12,6 +11,49 @@ interface OrgOnboardingFlowProps {
   onComplete: (result: OrganizationResult) => void;
   onBack?: () => void;
 }
+
+const ProgressIndicator: React.FC<{ currentStep: number; totalSteps: number }> = ({ currentStep, totalSteps }) => {
+  const steps = Array.from({ length: totalSteps }, (_, i) => i + 1);
+
+  return (
+    <div className="flex items-center justify-center">
+      {steps.map((step, index) => (
+        <React.Fragment key={step}>
+          <div className="flex flex-col items-center">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-medium transition-all duration-300 ${
+                step < currentStep
+                  ? 'bg-green-500 text-white shadow-lg'
+                  : step === currentStep
+                  ? 'bg-blue-600 text-white shadow-lg ring-4 ring-blue-100'
+                  : 'bg-gray-200 text-gray-500'
+              }`}
+            >
+              {step < currentStep ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <span className="text-sm">{step}</span>
+              )}
+            </div>
+            <div className="mt-2 text-xs font-medium text-gray-500">
+              {step === 1 && 'Details'}
+              {step === 2 && 'Admin'}
+              {step === 3 && 'Plan'}
+              {step === 4 && 'Confirm'}
+            </div>
+          </div>
+          {index < steps.length - 1 && (
+            <div
+              className={`w-16 h-0.5 mx-2 transition-all duration-300 ${
+                step < currentStep ? 'bg-green-500' : 'bg-gray-200'
+              }`}
+            />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
 
 const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBack }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -33,7 +75,7 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
 
   const updateData = (updates: Partial<OrgOnboardingData>) => {
     setData(prev => ({ ...prev, ...updates }));
-    setError(null); // Clear errors when data changes
+    setError(null);
   };
 
   const nextStep = () => {
@@ -59,23 +101,15 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
       setResult(orgResult);
       setIsComplete(true);
       
-      // Store the organization result in localStorage
       localStorage.setItem('org_onboarding_result', JSON.stringify(orgResult));
       
-      // Ensure the admin user is properly logged in by refreshing the session
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
         console.error('Session error:', sessionError);
-        // Continue with redirect even if session check fails
-      } else if (sessionData.session) {
-        console.log('Admin user session confirmed:', sessionData.session.user.email);
       }
       
-      // Redirect to organization dashboard after 2 seconds
       setTimeout(() => {
-        // In a real app, you would use React Router to navigate to '/org-dashboard'
-        // For now, we'll trigger the completion callback which should handle the redirect
         onComplete(orgResult);
       }, 2000);
 
@@ -99,7 +133,7 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
       case 2:
         return data.planTier !== '';
       case 3:
-        return true; // Confirmation step
+        return true;
       default:
         return false;
     }
@@ -139,7 +173,6 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
             </div>
           )}
           
-          {/* Loading animation */}
           <div className="mt-6">
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -154,7 +187,6 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-8 h-8 text-blue-600" />
@@ -166,7 +198,6 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
         <ProgressIndicator currentStep={currentStep + 1} totalSteps={totalSteps} />
         
         <div className="bg-white rounded-2xl shadow-xl p-8 mt-8 transition-all duration-300">
-          {/* Step Title */}
           <div className="text-center mb-6">
             <h2 className="text-xl font-semibold text-gray-900">{getStepTitle()}</h2>
           </div>
@@ -177,7 +208,6 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
             </div>
           )}
 
-          {/* Step Content */}
           {currentStep === 0 && (
             <StepOneOrgDetails 
               data={data} 
@@ -202,7 +232,6 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
             />
           )}
 
-          {/* Navigation */}
           <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
             <div className="flex space-x-3">
               {onBack && currentStep === 0 && (
