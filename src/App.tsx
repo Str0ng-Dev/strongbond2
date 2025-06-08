@@ -5,13 +5,26 @@ import OrgDashboard from './components/OrgDashboard';
 import Dashboard from './components/Dashboard';
 import { initializeRevenueCat } from './lib/revenuecat';
 import { OrganizationResult } from './utils/orgOnboarding';
+import { AllProviders, useAppContext } from './contexts';
 
 // Simple routing state management
 type Route = 'home' | 'individual-onboarding' | 'org-onboarding' | 'individual-dashboard' | 'org-dashboard';
 
-function App() {
+// Main App Component (wrapped with contexts)
+function AppContent() {
+  const {
+    user,
+    organization,
+    isOrgUser,
+    isIndividualUser,
+    isAuthenticated,
+    isLoading,
+    error,
+    logout
+  } = useAppContext();
+
   const [currentRoute, setCurrentRoute] = useState<Route>('home');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
     // Initialize RevenueCat and determine initial route
@@ -20,42 +33,43 @@ function App() {
         // Initialize RevenueCat
         await initializeRevenueCat();
         
-        // Check if individual onboarding is complete
-        const savedData = localStorage.getItem('onboarding_data');
-        const isIndividualComplete = !!savedData;
-        
-        // Check if organization onboarding is complete
-        const orgData = localStorage.getItem('org_onboarding_result');
-        const isOrgComplete = !!orgData;
-        
-        // Determine initial route based on completion status
-        if (isOrgComplete) {
-          setCurrentRoute('org-dashboard');
-        } else if (isIndividualComplete) {
-          setCurrentRoute('individual-dashboard');
+        // Determine route based on context state
+        if (isAuthenticated && user) {
+          if (isOrgUser) {
+            setCurrentRoute('org-dashboard');
+          } else if (isIndividualUser) {
+            setCurrentRoute('individual-dashboard');
+          } else {
+            // User exists but context is unclear, go to home
+            setCurrentRoute('home');
+          }
         } else {
           setCurrentRoute('home');
         }
       } catch (error) {
         console.error('Error initializing app:', error);
         // Continue with app initialization even if RevenueCat fails
-        const savedData = localStorage.getItem('onboarding_data');
-        const orgData = localStorage.getItem('org_onboarding_result');
-        
-        if (orgData) {
-          setCurrentRoute('org-dashboard');
-        } else if (savedData) {
-          setCurrentRoute('individual-dashboard');
+        if (isAuthenticated && user) {
+          if (isOrgUser) {
+            setCurrentRoute('org-dashboard');
+          } else if (isIndividualUser) {
+            setCurrentRoute('individual-dashboard');
+          } else {
+            setCurrentRoute('home');
+          }
         } else {
           setCurrentRoute('home');
         }
       } finally {
-        setIsLoading(false);
+        setIsInitializing(false);
       }
     };
 
-    initializeApp();
-  }, []);
+    // Only initialize once the context has finished loading
+    if (!isLoading) {
+      initializeApp();
+    }
+  }, [isLoading, isAuthenticated, user, isOrgUser, isIndividualUser]);
 
   const handleIndividualOnboardingComplete = () => {
     setCurrentRoute('individual-dashboard');
@@ -71,20 +85,21 @@ function App() {
     console.log('Organization created successfully, navigating to dashboard:', result);
   };
 
-  const handleLogout = () => {
-    // Clear all stored data and return to home
-    localStorage.removeItem('onboarding_data');
-    localStorage.removeItem('org_onboarding_result');
+  const handleLogout = async () => {
+    await logout();
     setCurrentRoute('home');
   };
 
-  // Show loading state briefly while checking localStorage and initializing RevenueCat
-  if (isLoading) {
+  // Show loading state while context is loading or app is initializing
+  if (isLoading || isInitializing) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-900">Loading...</h2>
+          {error && (
+            <p className="text-red-600 text-sm mt-2">{error}</p>
+          )}
         </div>
       </div>
     );
@@ -132,48 +147,93 @@ function App() {
               <p className="text-xl text-gray-600 mb-8">
                 Build stronger spiritual communities through devotionals, fitness, and connection
               </p>
+              
+              {/* Context Debug Info (only in development) */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-left max-w-md mx-auto">
+                  <h3 className="font-semibold text-yellow-900 mb-2">Context Debug Info:</h3>
+                  <div className="text-xs text-yellow-800 space-y-1">
+                    <p>Authenticated: {isAuthenticated ? 'Yes' : 'No'}</p>
+                    <p>User: {user ? `${user.first_name} (${user.user_role})` : 'None'}</p>
+                    <p>Organization: {organization ? organization.name : 'None'}</p>
+                    <p>Is Org User: {isOrgUser ? 'Yes' : 'No'}</p>
+                    <p>Is Individual User: {isIndividualUser ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto">
-              {/* Individual User */}
-              <div className="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-all duration-200 transform hover:scale-105">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+            {/* Show different content based on authentication state */}
+            {isAuthenticated && user ? (
+              <div className="text-center">
+                <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                    Welcome back, {user.first_name}!
+                  </h2>
+                  <p className="text-gray-600 mb-6">
+                    {isOrgUser 
+                      ? `Continue managing ${organization?.name}`
+                      : 'Continue your spiritual journey'
+                    }
+                  </p>
+                  <div className="flex justify-center space-x-4">
+                    <button
+                      onClick={() => setCurrentRoute(isOrgUser ? 'org-dashboard' : 'individual-dashboard')}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Go to Dashboard
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Join as Individual</h3>
-                <p className="text-gray-600 mb-6">
-                  Start your personal spiritual journey with devotionals, fitness challenges, and community connection.
-                </p>
-                <button
-                  onClick={() => setCurrentRoute('individual-onboarding')}
-                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Get Started
-                </button>
               </div>
+            ) : (
+              /* Options for non-authenticated users */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto">
+                {/* Individual User */}
+                <div className="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-all duration-200 transform hover:scale-105">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Join as Individual</h3>
+                  <p className="text-gray-600 mb-6">
+                    Start your personal spiritual journey with devotionals, fitness challenges, and community connection.
+                  </p>
+                  <button
+                    onClick={() => setCurrentRoute('individual-onboarding')}
+                    className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    Get Started
+                  </button>
+                </div>
 
-              {/* Organization */}
-              <div className="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-all duration-200 transform hover:scale-105">
-                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+                {/* Organization */}
+                <div className="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-all duration-200 transform hover:scale-105">
+                  <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Create Organization</h3>
+                  <p className="text-gray-600 mb-6">
+                    Set up your church, ministry, or organization with custom branding and advanced features.
+                  </p>
+                  <button
+                    onClick={() => setCurrentRoute('org-onboarding')}
+                    className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                  >
+                    Create Organization
+                  </button>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Create Organization</h3>
-                <p className="text-gray-600 mb-6">
-                  Set up your church, ministry, or organization with custom branding and advanced features.
-                </p>
-                <button
-                  onClick={() => setCurrentRoute('org-onboarding')}
-                  className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
-                >
-                  Create Organization
-                </button>
               </div>
-            </div>
+            )}
 
             {/* Features Preview */}
             <div className="mt-16 text-center">
@@ -214,6 +274,15 @@ function App() {
         </div>
       );
   }
+}
+
+// Main App wrapper with context providers
+function App() {
+  return (
+    <AllProviders>
+      <AppContent />
+    </AllProviders>
+  );
 }
 
 export default App;
