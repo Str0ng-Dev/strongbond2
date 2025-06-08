@@ -28,8 +28,8 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) => {
   const [error, setError] = useState<string | null>(null);
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
 
-  const totalSteps = 6; // Added invite code step
-
+const totalSteps = 5; // Invite + Name + Role + Fitness + Group
+  
   const updateData = (updates: Partial<OnboardingData>) => {
     setData(prev => ({ ...prev, ...updates }));
   };
