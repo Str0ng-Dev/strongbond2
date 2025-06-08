@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronRight, ChevronLeft, Check, Users, Target, UserCheck, Gift } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Users, Target, UserCheck, Gift, Hash, Plus, Clock } from 'lucide-react';
 import StepOne from './steps/StepOne';
 import StepTwo from './steps/StepTwo';
 import StepThree from './steps/StepThree';
-import StepFour from './steps/StepFour';
 import ProgressIndicator from './ProgressIndicator';
 import { supabase } from '../lib/supabase';
 import { OnboardingData, PendingInvite } from '../types';
@@ -12,8 +11,10 @@ interface OnboardingFlowProps {
   onComplete: () => void;
 }
 
+type ConnectionAction = 'link-user' | 'join-group' | 'create-group' | 'skip';
+
 const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) => {
-  const [currentStep, setCurrentStep] = useState(0); // Start at step 0 for invite code
+  const [currentStep, setCurrentStep] = useState(0);
   const [data, setData] = useState<OnboardingData>({
     first_name: '',
     user_role: '',
@@ -27,11 +28,15 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+  const [connectionAction, setConnectionAction] = useState<ConnectionAction | ''>('');
+  const [userInviteCode, setUserInviteCode] = useState('');
+  const [groupInviteCode, setGroupInviteCode] = useState('');
 
-const totalSteps = 5; //  Name + Role + Fitness + Group + Account
-  
+  const totalSteps = 5; // Simplified to 5 steps
+
   const updateData = (updates: Partial<OnboardingData>) => {
     setData(prev => ({ ...prev, ...updates }));
+    setError(null);
   };
 
   const nextStep = () => {
@@ -48,13 +53,15 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
     }
   };
 
-  const checkInviteCode = async (inviteCode: string) => {
+  const checkUserInviteCode = async (inviteCode: string) => {
     if (!inviteCode.trim()) {
       setPendingInvite(null);
-      return;
+      return false;
     }
 
     try {
+      console.log('🔍 Checking user invite code:', inviteCode.toUpperCase());
+      
       const { data: invite, error } = await supabase
         .from('pending_invites')
         .select('*')
@@ -62,23 +69,26 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
         .is('used_by_user_id', null)
         .maybeSingle();
 
+      console.log('🔍 User invite query result:', { invite, error });
+
       if (error) {
-        console.error('Error checking invite code:', error);
+        console.error('Error checking user invite code:', error);
         throw new Error('Failed to validate invite code');
       }
 
       if (invite) {
         setPendingInvite(invite);
-        // Pre-fill form data
-        updateData({
-          user_role: invite.invited_role,
-          first_name: invite.invited_first_name || '',
-          pending_invite_code: inviteCode.toUpperCase()
-        });
+        // Pre-fill form data if invite has info
+        if (invite.invited_role && !data.user_role) {
+          updateData({ user_role: invite.invited_role });
+        }
+        if (invite.invited_first_name && !data.first_name) {
+          updateData({ first_name: invite.invited_first_name });
+        }
         return true;
       } else {
         setPendingInvite(null);
-        throw new Error('Invalid or expired invite code');
+        throw new Error('Invalid or expired user invite code');
       }
     } catch (err) {
       setPendingInvite(null);
@@ -86,7 +96,6 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
     }
   };
 
-  // Generate a random 6-character invite code
   const generateInviteCode = (): string => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
@@ -101,6 +110,8 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
     setError(null);
 
     try {
+      console.log('🚀 Starting onboarding completion with connection action:', connectionAction);
+
       // Sign up the user with email and password
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -124,10 +135,12 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
       const userData = {
         id: userId,
         first_name: data.first_name,
-        user_role: data.user_role as 'Dad' | 'Mom' | 'Son' | 'Daughter' | 'Single Man' | 'Single Woman' | 'Church Leader' | 'Coach',
+        user_role: data.user_role,
         fitness_enabled: data.fitness_enabled,
         linked_to_user_id: pendingInvite ? pendingInvite.inviter_user_id : null
       };
+
+      console.log('👤 Creating user with data:', userData);
 
       // Insert user data
       const { error: userError } = await supabase
@@ -138,29 +151,16 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
         throw new Error(`Failed to save user data: ${userError.message}`);
       }
 
-      // If using a pending invite, mark it as used
-      if (pendingInvite) {
-        const { error: inviteError } = await supabase
-          .from('pending_invites')
-          .update({
-            used_by_user_id: userId,
-            used_at: new Date().toISOString()
-          })
-          .eq('id', pendingInvite.id);
-
-        if (inviteError) {
-          console.error('Failed to mark invite as used:', inviteError);
-          // Don't throw error here as user creation was successful
-        }
-      }
-
-      // Handle group actions (only if not using pending invite)
-      if (!pendingInvite) {
-        if (data.group_action === 'Create Group') {
-          await handleCreateGroup(userId);
-        } else if (data.group_action === 'Join with Code' && data.invite_code) {
-          await handleJoinGroup(userId);
-        }
+      // Handle connection actions
+      if (connectionAction === 'link-user' && pendingInvite) {
+        console.log('🔗 Marking user invite as used');
+        await markInviteAsUsed(pendingInvite, userId);
+      } else if (connectionAction === 'create-group') {
+        console.log('🏗️ Creating group');
+        await handleCreateGroup(userId);
+      } else if (connectionAction === 'join-group' && groupInviteCode) {
+        console.log('🚪 Joining group');
+        await handleJoinGroup(userId, groupInviteCode);
       }
 
       // Save data to localStorage for the dashboard
@@ -171,7 +171,7 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
 
       setIsComplete(true);
       
-      // Trigger the completion callback after a brief delay to show the completion screen
+      // Trigger the completion callback after a brief delay
       setTimeout(() => {
         onComplete();
       }, 2000);
@@ -184,12 +184,25 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
     }
   };
 
+  const markInviteAsUsed = async (invite: PendingInvite, userId: string) => {
+    const { error } = await supabase
+      .from('pending_invites')
+      .update({
+        used_by_user_id: userId,
+        used_at: new Date().toISOString()
+      })
+      .eq('id', invite.id);
+
+    if (error) {
+      console.error('Failed to mark invite as used:', error);
+      // Don't throw error here as user creation was successful
+    }
+  };
+
   const handleCreateGroup = async (userId: string) => {
-    // Generate a unique invite code
     let inviteCode = generateInviteCode();
     let isUnique = false;
     
-    // Ensure the invite code is unique
     while (!isUnique) {
       const { data: existingGroup } = await supabase
         .from('groups')
@@ -204,7 +217,6 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
       }
     }
 
-    // Create the group with name = user's first name + "'s Group"
     const groupName = `${data.first_name}'s Group`;
     
     const { data: groupData, error: groupError } = await supabase
@@ -221,7 +233,6 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
       throw new Error(`Failed to create group: ${groupError.message}`);
     }
 
-    // Add user as owner member
     const { error: memberError } = await supabase
       .from('group_members')
       .insert({
@@ -234,32 +245,20 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
       throw new Error(`Failed to add user to group: ${memberError.message}`);
     }
 
-    // Store the invite code for display
     updateData({ invite_code: inviteCode });
   };
 
-  const handleJoinGroup = async (userId: string) => {
-    if (!data.invite_code) {
-      throw new Error('Please enter an invite code');
-    }
-
-    // Find the group by invite code (case-insensitive)
+  const handleJoinGroup = async (userId: string, inviteCode: string) => {
     const { data: groupData, error: groupError } = await supabase
       .from('groups')
       .select('id')
-      .eq('invite_code', data.invite_code.toUpperCase())
+      .eq('invite_code', inviteCode.toUpperCase())
       .maybeSingle();
 
-    if (groupError) {
-      console.error("Supabase error:", groupError);
-      throw new Error('Something went wrong. Please try again.');
+    if (groupError || !groupData) {
+      throw new Error('Invalid group invite code. Please check and try again.');
     }
 
-    if (!groupData) {
-      throw new Error('Invalid invite code. Please check and try again.');
-    }
-
-    // Check if user is already a member
     const { data: existingMember } = await supabase
       .from('group_members')
       .select('user_id')
@@ -271,7 +270,6 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
       throw new Error('You are already a member of this group.');
     }
 
-    // Add user as member (not owner)
     const { error: memberError } = await supabase
       .from('group_members')
       .insert({
@@ -287,22 +285,22 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
 
   const canProceed = () => {
     switch (currentStep) {
-      case 0:
-        return true; // Invite code is optional
-      case 1:
+      case 0: // Name
         return data.first_name.trim().length > 0;
-      case 2:
+      case 1: // Role
         return data.user_role !== '';
-      case 3:
-        return true; // Fitness toggle doesn't require validation
-      case 4:
-        if (pendingInvite) return true; // Skip group selection if using invite
-        if (data.group_action === '') return false;
-        if (data.group_action === 'Join with Code') {
-          return data.invite_code && data.invite_code.trim().length === 6;
+      case 2: // Fitness
+        return true;
+      case 3: // Connections
+        if (connectionAction === '') return false;
+        if (connectionAction === 'link-user') {
+          return userInviteCode.trim().length > 0 && pendingInvite !== null;
         }
-        return true; // "Create Group" and "Not now" options
-      case 5:
+        if (connectionAction === 'join-group') {
+          return groupInviteCode.trim().length === 6;
+        }
+        return true; // create-group and skip are always valid
+      case 4: // Account
         return data.email.trim().length > 0 && 
                data.email.includes('@') && 
                data.password.length >= 6;
@@ -323,26 +321,27 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
           <div className="space-y-2 text-sm text-gray-500">
             <p><strong>Role:</strong> {data.user_role}</p>
             <p><strong>Fitness:</strong> {data.fitness_enabled ? 'Enabled' : 'Disabled'}</p>
-            {pendingInvite ? (
+            {connectionAction === 'link-user' && pendingInvite && (
               <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                <p className="text-purple-900 font-medium">Connected via Invite!</p>
-                <p className="text-xs text-purple-600 mt-1">You've been linked to your inviter</p>
+                <p className="text-purple-900 font-medium">Connected via User Invite!</p>
+                <p className="text-xs text-purple-600 mt-1">You've been linked to {pendingInvite.invited_role}</p>
               </div>
-            ) : (
-              <>
-                <p><strong>Group:</strong> {data.group_action}</p>
-                {data.group_action === 'Create Group' && data.invite_code && (
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-blue-900 font-medium">Your Group Invite Code:</p>
-                    <p className="text-xl font-bold text-blue-700 tracking-wider">{data.invite_code}</p>
-                    <p className="text-xs text-blue-600 mt-1">Share this code with others to invite them</p>
-                  </div>
-                )}
-              </>
+            )}
+            {connectionAction === 'create-group' && data.invite_code && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-900 font-medium">Your Group Invite Code:</p>
+                <p className="text-xl font-bold text-blue-700 tracking-wider">{data.invite_code}</p>
+                <p className="text-xs text-blue-600 mt-1">Share this code with others to invite them</p>
+              </div>
+            )}
+            {connectionAction === 'join-group' && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-900 font-medium">Joined Group!</p>
+                <p className="text-xs text-green-600 mt-1">You're now part of the community</p>
+              </div>
             )}
           </div>
           
-          {/* Loading animation */}
           <div className="mt-6">
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -365,91 +364,173 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
             </div>
           )}
 
+          {/* Step 0: Name */}
           {currentStep === 0 && (
-            <div className="text-center">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Gift className="w-8 h-8 text-purple-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Have an Invite Code?</h2>
-              <p className="text-gray-600 mb-8">If someone invited you to join, enter their invite code below</p>
-              
-              <div className="max-w-sm mx-auto space-y-4">
-                <div>
-                  <input
-                    type="text"
-                    value={data.pending_invite_code || ''}
-                    onChange={(e) => updateData({ pending_invite_code: e.target.value.toUpperCase() })}
-                    placeholder="Enter invite code (optional)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all duration-200 text-lg text-center font-mono tracking-wider uppercase"
-                    maxLength={8}
-                  />
-                </div>
-                
-                {data.pending_invite_code && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        setError(null);
-                        await checkInviteCode(data.pending_invite_code || '');
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Invalid invite code');
-                      }
-                    }}
-                    className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                  >
-                    Validate Code
-                  </button>
-                )}
-
-                {pendingInvite && (
-                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                    <div className="flex items-center justify-center mb-2">
-                      <Check className="w-5 h-5 text-purple-600 mr-2" />
-                      <span className="text-purple-900 font-medium">Valid Invite!</span>
-                    </div>
-                    <p className="text-sm text-purple-700">
-                      You've been invited as a <strong>{pendingInvite.invited_role}</strong>
-                      {pendingInvite.invited_first_name && (
-                        <span> with the name <strong>{pendingInvite.invited_first_name}</strong></span>
-                      )}
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="mt-8 text-center">
-                <p className="text-sm text-gray-500">
-                  Don't have an invite code? No problem! You can continue without one.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {currentStep === 1 && (
             <StepOne 
               data={data} 
               updateData={updateData} 
             />
           )}
-          {currentStep === 2 && (
+
+          {/* Step 1: Role */}
+          {currentStep === 1 && (
             <StepTwo 
               data={data} 
               updateData={updateData} 
             />
           )}
-          {currentStep === 3 && (
+
+          {/* Step 2: Fitness */}
+          {currentStep === 2 && (
             <StepThree 
               data={data} 
               updateData={updateData} 
             />
           )}
-          {currentStep === 4 && !pendingInvite && (
-            <StepFour 
-              data={data} 
-              updateData={updateData} 
-            />
+
+          {/* Step 3: Connections */}
+          {currentStep === 3 && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Users className="w-8 h-8 text-indigo-600" />
+              </div>
+              
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Connect with Others</h2>
+              <p className="text-gray-600 mb-8 text-lg">How would you like to connect?</p>
+              
+              <div className="space-y-4 max-w-md mx-auto">
+                {/* Link with Family/Mentor */}
+                <div className={`p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                  connectionAction === 'link-user' 
+                    ? 'bg-purple-50 border-purple-500 ring-4 ring-purple-200' 
+                    : 'bg-gray-50 border-gray-200 hover:bg-purple-50 hover:border-purple-300'
+                }`}
+                onClick={() => setConnectionAction('link-user')}>
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                      <Gift className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <h3 className="font-semibold text-gray-900">Link with Family/Mentor</h3>
+                      <p className="text-sm text-gray-600">Someone invited you with an 8-character code</p>
+                    </div>
+                  </div>
+                  
+                  {connectionAction === 'link-user' && (
+                    <div className="mt-4 space-y-3">
+                      <input
+                        type="text"
+                        value={userInviteCode}
+                        onChange={(e) => setUserInviteCode(e.target.value.toUpperCase())}
+                        placeholder="Enter 8-character invite code"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center font-mono"
+                        maxLength={8}
+                      />
+                      
+                      {userInviteCode && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await checkUserInviteCode(userInviteCode);
+                              setError(null);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'Invalid invite code');
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          Validate Code
+                        </button>
+                      )}
+                      
+                      {pendingInvite && (
+                        <div className="p-3 bg-purple-100 border border-purple-300 rounded-lg">
+                          <div className="flex items-center justify-center mb-1">
+                            <Check className="w-4 h-4 text-purple-600 mr-1" />
+                            <span className="text-purple-900 font-medium text-sm">Valid Invite!</span>
+                          </div>
+                          <p className="text-xs text-purple-700">
+                            You'll be linked to <strong>{pendingInvite.invited_role}</strong>
+                            {pendingInvite.invited_first_name && ` (${pendingInvite.invited_first_name})`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Join Group */}
+                <div className={`p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                  connectionAction === 'join-group' 
+                    ? 'bg-green-50 border-green-500 ring-4 ring-green-200' 
+                    : 'bg-gray-50 border-gray-200 hover:bg-green-50 hover:border-green-300'
+                }`}
+                onClick={() => setConnectionAction('join-group')}>
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                      <Hash className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <h3 className="font-semibold text-gray-900">Join a Group</h3>
+                      <p className="text-sm text-gray-600">Join an existing community group with 6-character code</p>
+                    </div>
+                  </div>
+                  
+                  {connectionAction === 'join-group' && (
+                    <div className="mt-4">
+                      <input
+                        type="text"
+                        value={groupInviteCode}
+                        onChange={(e) => setGroupInviteCode(e.target.value.toUpperCase())}
+                        placeholder="Enter 6-character group code"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center font-mono"
+                        maxLength={6}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Create Group */}
+                <div className={`p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                  connectionAction === 'create-group' 
+                    ? 'bg-blue-50 border-blue-500 ring-4 ring-blue-200' 
+                    : 'bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300'
+                }`}
+                onClick={() => setConnectionAction('create-group')}>
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Plus className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <h3 className="font-semibold text-gray-900">Create a Group</h3>
+                      <p className="text-sm text-gray-600">Start your own community group</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skip */}
+                <div className={`p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                  connectionAction === 'skip' 
+                    ? 'bg-gray-50 border-gray-500 ring-4 ring-gray-200' 
+                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                }`}
+                onClick={() => setConnectionAction('skip')}>
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                      <Clock className="w-6 h-6 text-gray-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <h3 className="font-semibold text-gray-900">Skip for Now</h3>
+                      <p className="text-sm text-gray-600">You can connect with others later</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
-          {(currentStep === 4 && pendingInvite) || currentStep === 5 && (
+
+          {/* Step 4: Account */}
+          {currentStep === 4 && (
             <div className="text-center">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <UserCheck className="w-8 h-8 text-blue-600" />
@@ -493,6 +574,7 @@ const totalSteps = 5; //  Name + Role + Fitness + Group + Account
             </div>
           )}
 
+          {/* Navigation */}
           <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
             <button
               onClick={prevStep}
