@@ -381,14 +381,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             />
           </div>
 
-          {/* Right Column - Current Plan & Today's Experience */}
-          <div className="lg:col-span-2 space-y-8">
-            <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
-            <TodaysExperience key={refreshKey} userData={userData} />
+            {/* ADD THIS AI TEST SECTION HERE: */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
+              <div className="p-6 border-b border-gray-100">
+                <h3 className="text-xl font-bold text-gray-900">🤖 AI Assistant Test</h3>
+                <p className="text-gray-600 text-sm mt-1">Testing AI system functionality</p>
+              </div>
+              <div className="p-6">
+                <AIAssistantTest />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
   );
 };
 
