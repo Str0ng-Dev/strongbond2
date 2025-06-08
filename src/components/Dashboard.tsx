@@ -386,16 +386,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
             <TodaysExperience key={refreshKey} userData={userData} />
             
-            {/* AI TEST SECTION */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h3 className="text-xl font-bold text-gray-900">🤖 AI Assistant Test</h3>
-                <p className="text-gray-600 text-sm mt-1">Testing AI system functionality</p>
-              </div>
-              <div className="p-6">
-                <AIAssistantTest />
-              </div>
-            </div>
+         
           </div>
         </div>
       </div>
