@@ -9,6 +9,7 @@ import DevotionalsPage from './DevotionalsPage';
 import UserLinking from './UserLinking';
 import FeaturedCarousel from './FeaturedCarousel';
 import { supabase } from '../lib/supabase';
+import AIAssistantTest from './AIAssistantTest';
 
 interface DashboardProps {
   onLogout?: () => void;
