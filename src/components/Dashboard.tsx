@@ -1,390 +1,115 @@
-import React, { useState, useEffect } from 'react';
-import { LogOut, BookOpen, Users as UsersIcon, Heart, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
-import { OnboardingData, User } from '../types';
-import DevotionalMarketplace from './dashboard/DevotionalMarketplace';
-import CurrentPlan from './dashboard/CurrentPlan';
-import TodaysExperience from './dashboard/TodaysExperience';
-import Connections from './dashboard/Connections';
-import DevotionalsPage from './DevotionalsPage';
-import UserLinking from './UserLinking';
-import FeaturedCarousel from './FeaturedCarousel';
-import { supabase } from '../lib/supabase';
+import React from 'react';
+import { useAppContext } from '../contexts';
+import IndividualDashboard from './IndividualDashboard';
+import OrgDashboard from './OrgDashboard';
 
 interface DashboardProps {
-  onLogout?: () => void;
+  onLogout: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
-  const [userData, setUserData] = useState<OnboardingData | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'devotionals' | 'user-connections'>('dashboard');
-  const [isFeaturedCollapsed, setIsFeaturedCollapsed] = useState(true); // Changed to true
+  const { 
+    user, 
+    organization, 
+    isOrgUser, 
+    isIndividualUser, 
+    isLoading, 
+    error 
+  } = useAppContext();
 
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      // Load user data from localStorage
-      const savedData = localStorage.getItem('onboarding_data');
-      if (savedData) {
-        const onboardingData = JSON.parse(savedData);
-        setUserData(onboardingData);
-
-        // If we have a user_id, fetch the current user data from Supabase
-        if (onboardingData.user_id) {
-          const { data: user, error } = await supabase
-            .from('users')
-            .select('id, first_name, user_role, fitness_enabled, created_at, updated_at, linked_to_user_id')
-            .eq('id', onboardingData.user_id)
-            .single();
-
-          if (error) {
-            console.error('Error fetching user data:', error);
-          } else {
-            setCurrentUser(user);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGroupUpdate = () => {
-    // Refresh user data when group status changes
-    loadUserData();
-  };
-
-  const handlePlanUpdate = () => {
-    // Trigger refresh of plan-related components
-    setRefreshKey(prev => prev + 1);
-  };
-
-  const handleUserLinked = () => {
-    // Refresh user data when user linking changes
-    loadUserData();
-  };
-
-  const handleNavigateToDevotionals = () => {
-    setCurrentView('devotionals');
-  };
-
-  const handleNavigateToUserConnections = () => {
-    setCurrentView('user-connections');
-  };
-
-  const handleBackToDashboard = () => {
-    setCurrentView('dashboard');
-    // Refresh dashboard data when returning
-    handlePlanUpdate();
-  };
-
-  const handleFeaturedPlanStarted = () => {
-    // Refresh dashboard when a plan is started from featured carousel
-    handlePlanUpdate();
-  };
-
-  const handleLogout = async () => {
-    const confirmLogout = window.confirm('Are you sure you want to log out?');
-    if (!confirmLogout) return;
-
-    try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
-      
-      // Clear localStorage
-      localStorage.removeItem('onboarding_data');
-      
-      // Call the onLogout callback if provided
-      if (onLogout) {
-        onLogout();
-      }
-    } catch (error) {
-      console.error('Error during logout:', error);
-      // Even if there's an error, clear local data and redirect
-      localStorage.removeItem('onboarding_data');
-      if (onLogout) {
-        onLogout();
-      }
-    }
-  };
-
-  const getEncouragementMessage = (userRole: string, fitnessEnabled: boolean) => {
-    const messages = {
-      'Dad': [
-        "Leading your family with strength and wisdom! 💪",
-        "You're doing something powerful here, Dad! 🙌",
-        "Your leadership is making a difference! ✨"
-      ],
-      'Mom': [
-        "Nurturing hearts and souls beautifully! 💝",
-        "Your love is transforming lives! 🌸",
-        "Keep shining your light, Mom! ✨"
-      ],
-      'Son': [
-        "Growing stronger in faith every day! 🌱",
-        "You're becoming the man God designed you to be! 💪",
-        "Your journey is inspiring! 🚀"
-      ],
-      'Daughter': [
-        "Blossoming into who God created you to be! 🌺",
-        "Your heart for God is beautiful! 💖",
-        "Keep growing in grace and strength! ✨"
-      ],
-      'Single Man': [
-        "Using this season for incredible growth! 🌟",
-        "Your dedication to God is inspiring! 💪",
-        "Making the most of every opportunity! 🚀"
-      ],
-      'Single Woman': [
-        "Embracing God's perfect timing! 🌸",
-        "Your faith journey is beautiful! 💖",
-        "Living with purpose and passion! ✨"
-      ],
-      'Church Leader': [
-        "Shepherding hearts with love and wisdom! ⛪",
-        "Your ministry is touching lives! 🙌",
-        "Leading others closer to God! ✨"
-      ],
-      'Coach': [
-        "Building champions in life and faith! 🏆",
-        "Your influence goes beyond the game! 💪",
-        "Shaping character and building dreams! 🌟"
-      ]
-    };
-
-    const roleMessages = messages[userRole as keyof typeof messages] || [
-      "You're doing something powerful here! 💪",
-      "Keep growing stronger today! 🌟",
-      "Your journey matters! ✨"
-    ];
-
-    if (fitnessEnabled) {
-      const fitnessMessages = [
-        "Strengthening body, mind, and spirit! 💪✨",
-        "Honoring God with your whole being! 🙌",
-        "Building strength inside and out! 💪❤️"
-      ];
-      return [...roleMessages, ...fitnessMessages];
-    }
-
-    return roleMessages;
-  };
-
-  const getRandomMessage = (messages: string[]) => {
-    return messages[Math.floor(Math.random() * messages.length)];
-  };
-
+  // Show loading state while context is being determined
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-900">Loading Dashboard...</h2>
+          <p className="text-gray-600 mt-2">Determining your context...</p>
         </div>
       </div>
     );
   }
 
-  if (!userData) {
+  // Show error state if there's an issue with context
+  if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading Dashboard...</h2>
-          <p className="text-gray-600">Please complete onboarding first.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show Devotionals page
-  if (currentView === 'devotionals') {
-    return (
-      <DevotionalsPage
-        onBack={handleBackToDashboard}
-        onPlanStarted={handlePlanUpdate}
-      />
-    );
-  }
-
-  // Show User Connections page
-  if (currentView === 'user-connections' && currentUser) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">User Connections</h1>
-                <p className="text-gray-600">Manage your spiritual connections</p>
-              </div>
-              <button
-                onClick={handleBackToDashboard}
-                className="flex items-center px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200"
-              >
-                Back to Dashboard
-              </button>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-red-50 to-red-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
           </div>
-        </div>
-
-        {/* Content */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <UserLinking 
-            currentUser={currentUser}
-            onUserLinked={handleUserLinked}
-          />
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Dashboard Error</h2>
+          <p className="text-red-600 mb-6">{error}</p>
+          <button
+            onClick={onLogout}
+            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Return to Home
+          </button>
         </div>
       </div>
     );
   }
 
-  // Show main dashboard
+  // Show fallback if user context is unclear
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">User Not Found</h2>
+          <p className="text-gray-600 mb-6">Unable to load your user profile. Please try logging in again.</p>
+          <button
+            onClick={onLogout}
+            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Route to appropriate dashboard based on context
+  if (isOrgUser && organization) {
+    return <OrgDashboard onLogout={onLogout} />;
+  }
+
+  if (isIndividualUser) {
+    return <IndividualDashboard onLogout={onLogout} />;
+  }
+
+  // Fallback for edge cases
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {/* Friendly Greeting Header */}
-      <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {/* Main Greeting */}
-              <div className="mb-4">
-                <h1 className="text-4xl font-bold mb-2">
-                  Hey {userData.first_name}! 👋
-                </h1>
-                <div className="flex items-center space-x-4 mb-3">
-                  <span className="inline-flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-full text-white font-medium">
-                    <Heart className="w-4 h-4 mr-2" />
-                    {userData.user_role}
-                  </span>
-                  {userData.fitness_enabled && (
-                    <span className="inline-flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-full text-white font-medium">
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Fitness Enabled
-                    </span>
-                  )}
-                </div>
-                
-                {/* Encouraging Message */}
-                <p className="text-xl text-white text-opacity-90 font-medium">
-                  {getRandomMessage(getEncouragementMessage(userData.user_role, userData.fitness_enabled))}
-                </p>
-              </div>
-            </div>
-
-            {/* Navigation & Logout */}
-            <div className="flex items-center space-x-3">
-              {/* Devotionals Button */}
-              <button
-                onClick={handleNavigateToDevotionals}
-                className="flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30 rounded-lg transition-all duration-200 group"
-                title="Devotionals"
-              >
-                <BookOpen className="w-4 h-4 mr-2" />
-                <span className="font-medium">Devotionals</span>
-              </button>
-
-              {/* User Connections Button */}
-              <button
-                onClick={handleNavigateToUserConnections}
-                className="flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30 rounded-lg transition-all duration-200 group"
-                title="User Connections"
-              >
-                <UsersIcon className="w-4 h-4 mr-2" />
-                <span className="font-medium">Connections</span>
-              </button>
-              
-              {/* Log Out Button */}
-              <button
-                onClick={handleLogout}
-                className="flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-red-500 hover:bg-opacity-90 rounded-lg transition-all duration-200 group"
-                title="Log Out"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                <span className="font-medium">Log Out</span>
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-yellow-50 to-yellow-100 flex items-center justify-center">
+      <div className="text-center max-w-md mx-auto p-8">
+        <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
         </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Featured Devotionals Section - Collapsible Card */}
-        <div className="mb-8">
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            {/* Card Header */}
-            <div className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-orange-100">
-              <div className="px-6 py-4">
-                <button
-                  onClick={() => setIsFeaturedCollapsed(!isFeaturedCollapsed)}
-                  className="w-full flex items-center justify-between text-left group"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center">
-                      <span className="text-xl">🔥</span>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900 group-hover:text-orange-600 transition-colors">
-                        Featured Devotionals
-                      </h2>
-                      <p className="text-gray-600 text-sm">
-                        Explore new devotional journeys selected to inspire and challenge you
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-500 hidden sm:block">
-                      {isFeaturedCollapsed ? 'Show' : 'Hide'}
-                    </span>
-                    <div className="p-2 rounded-lg bg-white bg-opacity-50 group-hover:bg-opacity-80 transition-all duration-200">
-                      {isFeaturedCollapsed ? (
-                        <ChevronDown className="w-5 h-5 text-gray-600" />
-                      ) : (
-                        <ChevronUp className="w-5 h-5 text-gray-600" />
-                      )}
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Collapsible Content */}
-            <div className={`transition-all duration-300 ease-in-out ${
-              isFeaturedCollapsed 
-                ? 'max-h-0 opacity-0 overflow-hidden' 
-                : 'max-h-[1000px] opacity-100'
-            }`}>
-              <div className="p-6">
-                <FeaturedCarousel onPlanStarted={handleFeaturedPlanStarted} />
-              </div>
-            </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Context Unclear</h2>
+        <p className="text-gray-600 mb-6">
+          We're having trouble determining your account type. Please contact support or try logging in again.
+        </p>
+        <div className="space-y-3">
+          <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+            <p><strong>User:</strong> {user.first_name} ({user.user_role})</p>
+            <p><strong>Organization:</strong> {organization ? organization.name : 'None'}</p>
+            <p><strong>Context:</strong> {isOrgUser ? 'Organization' : isIndividualUser ? 'Individual' : 'Unknown'}</p>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Quick Start & Connections */}
-          <div className="lg:col-span-1 space-y-8">
-            <DevotionalMarketplace onPlanStarted={handlePlanUpdate} />
-            <Connections 
-              currentUser={currentUser} 
-              onUpdate={handleGroupUpdate}
-            />
-          </div>
-
-          {/* Right Column - Current Plan & Today's Experience */}
-          <div className="lg:col-span-2 space-y-8">
-            <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
-            <TodaysExperience key={refreshKey} userData={userData} />
-          </div>
+          <button
+            onClick={onLogout}
+            className="px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+          >
+            Return to Home
+          </button>
         </div>
       </div>
     </div>

@@ -14,75 +14,27 @@ import {
   Search,
   Plus
 } from 'lucide-react';
-import { OrganizationResult } from '../utils/orgOnboarding';
-import { supabase } from '../lib/supabase';
+import { useAppContext } from '../contexts';
 
 interface OrgDashboardProps {
   onLogout: () => void;
 }
 
 const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
-  const [organizationData, setOrganizationData] = useState<OrganizationResult | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, organization, logout } = useAppContext();
   const [activeSection, setActiveSection] = useState<'dashboard' | 'members' | 'groups' | 'devotionals' | 'settings'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  useEffect(() => {
-    checkAuthAndLoadData();
-  }, []);
-
-  const checkAuthAndLoadData = async () => {
-    try {
-      // Check authentication status
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !session) {
-        console.error('Authentication error:', authError);
-        onLogout();
-        return;
-      }
-
-      setIsAuthenticated(true);
-
-      // Load organization data from localStorage
-      const orgData = localStorage.getItem('org_onboarding_result');
-      if (orgData) {
-        const parsedData = JSON.parse(orgData);
-        
-        // Verify the authenticated user matches the org admin
-        if (session.user.id !== parsedData.adminUser.id) {
-          console.error('User mismatch - not authorized for this organization');
-          onLogout();
-          return;
-        }
-
-        setOrganizationData(parsedData);
-      } else {
-        console.error('No organization data found');
-        onLogout();
-        return;
-      }
-    } catch (error) {
-      console.error('Error loading organization data:', error);
-      onLogout();
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleLogout = async () => {
     const confirmLogout = window.confirm('Are you sure you want to log out?');
     if (confirmLogout) {
       try {
-        await supabase.auth.signOut();
-        localStorage.removeItem('org_onboarding_result');
+        await logout();
         onLogout();
       } catch (error) {
         console.error('Error during logout:', error);
         // Force logout even if there's an error
-        localStorage.removeItem('org_onboarding_result');
         onLogout();
       }
     }
@@ -96,18 +48,7 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-900">Loading Dashboard...</h2>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated || !organizationData) {
+  if (!user || !organization) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -123,8 +64,6 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
       </div>
     );
   }
-
-  const { organization, adminUser } = organizationData;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -203,7 +142,7 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
                     <User className="w-4 h-4 text-blue-600" />
                   </div>
                   <div className="hidden sm:block text-left">
-                    <p className="text-sm font-medium text-gray-900">{adminUser.email}</p>
+                    <p className="text-sm font-medium text-gray-900">{user.first_name}</p>
                     <p className="text-xs text-gray-500">Administrator</p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -213,7 +152,7 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
                 {isUserMenuOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">{adminUser.email}</p>
+                      <p className="text-sm font-medium text-gray-900">{user.first_name}</p>
                       <p className="text-xs text-gray-500">Organization Admin</p>
                     </div>
                     <button
@@ -325,7 +264,7 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
       <div className="lg:ml-64">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {activeSection === 'dashboard' && (
-            <DashboardContent organization={organization} />
+            <DashboardContent organization={organization} user={user} />
           )}
           {activeSection === 'members' && (
             <MembersContent organization={organization} />
@@ -357,13 +296,13 @@ const OrgDashboard: React.FC<OrgDashboardProps> = ({ onLogout }) => {
 };
 
 // Dashboard Content Component
-const DashboardContent: React.FC<{ organization: any }> = ({ organization }) => (
+const DashboardContent: React.FC<{ organization: any; user: any }> = ({ organization, user }) => (
   <div className="space-y-8">
     {/* Welcome Header */}
     <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-8 text-white">
       <h1 className="text-3xl font-bold mb-2">Welcome to {organization.name}!</h1>
       <p className="text-blue-100 text-lg">
-        Your organization dashboard is ready. Start building your community today.
+        Hello {user.first_name}, your organization dashboard is ready. Start building your community today.
       </p>
     </div>
 
