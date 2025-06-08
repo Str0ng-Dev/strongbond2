@@ -371,7 +371,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Quick Start & Connections */}
           <div className="lg:col-span-1 space-y-8">
             <DevotionalMarketplace onPlanStarted={handlePlanUpdate} />
@@ -381,7 +381,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             />
           </div>
 
-            {/* ADD THIS AI TEST SECTION HERE: */}
+          {/* Right Column - Current Plan & Today's Experience */}
+          <div className="lg:col-span-2 space-y-8">
+            <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
+            <TodaysExperience key={refreshKey} userData={userData} />
+            
+            {/* AI TEST SECTION */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
               <div className="p-6 border-b border-gray-100">
                 <h3 className="text-xl font-bold text-gray-900">🤖 AI Assistant Test</h3>
@@ -393,6 +398,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             </div>
           </div>
         </div>
+      </div>
+    </div>
   );
 };
 
