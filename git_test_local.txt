@@ -1,0 +1,4 @@
+LOCAL MAC GIT TEST FILE
+Created: Sun Jun  8 12:35:01 CDT 2025
+Purpose: Testing Git workflow from Mac to bolt.new
+Status: CREATED LOCALLY ✓
