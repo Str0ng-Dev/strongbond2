@@ -6,6 +6,7 @@ import StepThreePlanSelect from './orgOnboarding/StepThreePlanSelect';
 import StepFourConfirmation from './orgOnboarding/StepFourConfirmation';
 import ProgressIndicator from './ProgressIndicator';
 import { createOrganization, OrgOnboardingData, OrganizationResult } from '../utils/orgOnboarding';
+import { supabase } from '../lib/supabase';
 
 interface OrgOnboardingFlowProps {
   onComplete: (result: OrganizationResult) => void;
@@ -58,10 +59,25 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
       setResult(orgResult);
       setIsComplete(true);
       
-      // Trigger the completion callback after a brief delay to show the completion screen
+      // Store the organization result in localStorage
+      localStorage.setItem('org_onboarding_result', JSON.stringify(orgResult));
+      
+      // Ensure the admin user is properly logged in by refreshing the session
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        // Continue with redirect even if session check fails
+      } else if (sessionData.session) {
+        console.log('Admin user session confirmed:', sessionData.session.user.email);
+      }
+      
+      // Redirect to organization dashboard after 2 seconds
       setTimeout(() => {
+        // In a real app, you would use React Router to navigate to '/org-dashboard'
+        // For now, we'll trigger the completion callback which should handle the redirect
         onComplete(orgResult);
-      }, 3000);
+      }, 2000);
 
     } catch (err) {
       console.error('Organization onboarding error:', err);
@@ -128,7 +144,7 @@ const OrgOnboardingFlow: React.FC<OrgOnboardingFlowProps> = ({ onComplete, onBac
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
-            <p className="text-sm text-gray-500 mt-2">Redirecting to your dashboard...</p>
+            <p className="text-sm text-gray-500 mt-2">Redirecting to your organization dashboard...</p>
           </div>
         </div>
       </div>
