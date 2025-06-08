@@ -30,12 +30,11 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({ currentStep, tota
               )}
             </div>
             <div className="mt-2 text-xs font-medium text-gray-500">
-              {step === 1 && 'Invite'}
-              {step === 2 && 'Name'}
-              {step === 3 && 'Role'}
-              {step === 4 && 'Fitness'}
-              {step === 5 && 'Group'}
-              {step === 6 && 'Account'}
+              {step === 1 && 'Name'}
+              {step === 2 && 'Role'}
+              {step === 3 && 'Fitness'}
+              {step === 4 && 'Group'}
+              {step === 5 && 'Account'}
             </div>
           </div>
           {index < steps.length - 1 && (
