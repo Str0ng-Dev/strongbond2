@@ -378,7 +378,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   <div className="space-y-8">
     <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
   </div>
-
+ <div className="col-span-1 lg:col-span-2 space-y-8">
+    <Connections 
+      currentUser={currentUser} 
+      onUpdate={handleGroupUpdate}
+    />
+  </div>
   {/* Right Column */}
   <div className="space-y-8">
     <TodaysExperience key={refreshKey} userData={userData} />
