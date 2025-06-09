@@ -136,6 +136,7 @@ const AIChat: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [userOrgId, setUserOrgId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [session, setSession] = useState<any>(null); // Add session state
   
   // Loading states
   const [assistantsLoaded, setAssistantsLoaded] = useState(false);
@@ -201,6 +202,7 @@ const AIChat: React.FC = () => {
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
+          setSession(null);
           setAuthLoaded(true);
         }
       }
@@ -212,6 +214,7 @@ const AIChat: React.FC = () => {
         setIsAuthenticated(false);
         setUserId(null);
         setUserOrgId(null);
+        setSession(null);
         setAuthLoaded(true);
       }
     }, 2000);
@@ -224,6 +227,7 @@ const AIChat: React.FC = () => {
       console.log('🔐 Auth state changed:', event, session?.user?.id);
       
       clearTimeout(authTimeout);
+      setSession(session); // Store the session
       
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('🔐 User signed in:', session.user.id);
@@ -265,6 +269,7 @@ const AIChat: React.FC = () => {
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
+          setSession(null);
           setAvailableAssistants([]);
           setSelectedAssistant(null);
           setMessages([]);
@@ -481,7 +486,7 @@ const AIChat: React.FC = () => {
 
   // Send message to AI
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated) return;
+    if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -502,7 +507,7 @@ const AIChat: React.FC = () => {
       const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`, // ✅ Use session token instead of anon key
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -566,9 +571,9 @@ const AIChat: React.FC = () => {
 
   // Test connection
   const testConnection = async () => {
-    if (!selectedAssistant?.assistantId || !userId || !isAuthenticated) {
+    if (!selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) {
       setConnectionStatus('disconnected');
-      setError('Assistant not configured or user not authenticated');
+      setError('Assistant not configured, user not authenticated, or no session');
       return;
     }
 
@@ -579,7 +584,7 @@ const AIChat: React.FC = () => {
       const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`, // ✅ Use session token instead of anon key
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -627,20 +632,20 @@ const AIChat: React.FC = () => {
 
   // Initialize data when auth is loaded and user is authenticated
   useEffect(() => {
-    if (authLoaded && userId && isAuthenticated) {
+    if (authLoaded && userId && isAuthenticated && session) {
       fetchAssistants();
     }
-  }, [authLoaded, userId, isAuthenticated, userOrgId]);
+  }, [authLoaded, userId, isAuthenticated, userOrgId, session]);
 
   // Load conversations when assistant is selected
   useEffect(() => {
-    if (selectedAssistant && assistantsLoaded && isAuthenticated) {
+    if (selectedAssistant && assistantsLoaded && isAuthenticated && session) {
       fetchConversations();
       if (selectedAssistant.assistantId) {
         testConnection();
       }
     }
-  }, [selectedAssistant, assistantsLoaded, isAuthenticated]);
+  }, [selectedAssistant, assistantsLoaded, isAuthenticated, session]);
 
   // Loading screen
   if (!authLoaded) {
@@ -762,6 +767,7 @@ const AIChat: React.FC = () => {
               <div className="text-xs text-gray-500">
                 User: {userId?.substring(0, 8)}...
                 {userOrgId && <span className="ml-1">(Org: {userOrgId.substring(0, 8)}...)</span>}
+                {session && <span className="ml-1">✓</span>}
               </div>
             </div>
           </div>
@@ -892,11 +898,11 @@ const AIChat: React.FC = () => {
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
             placeholder={selectedAssistant ? `Share your heart with ${selectedAssistant.name}...` : 'Select an assistant to start chatting...'}
             className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            disabled={isLoading || !selectedAssistant?.assistantId || !isAuthenticated}
+            disabled={isLoading || !selectedAssistant?.assistantId || !isAuthenticated || !session}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading || !selectedAssistant?.assistantId || !isAuthenticated}
+            disabled={!input.trim() || isLoading || !selectedAssistant?.assistantId || !isAuthenticated || !session}
             className="bg-purple-500 text-white p-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />
@@ -904,7 +910,7 @@ const AIChat: React.FC = () => {
         </div>
 
         {/* Status Messages */}
-        {connectionStatus === 'connected' && selectedAssistant?.assistantId && isAuthenticated && (
+        {connectionStatus === 'connected' && selectedAssistant?.assistantId && isAuthenticated && session && (
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-700">
               <strong>Live Mode:</strong> Connected to OpenAI Assistants API via Supabase Edge Function.
@@ -921,7 +927,7 @@ const AIChat: React.FC = () => {
             <button 
               onClick={testConnection}
               className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-              disabled={!selectedAssistant?.assistantId || !isAuthenticated}
+              disabled={!selectedAssistant?.assistantId || !isAuthenticated || !session}
             >
               Retry Connection
             </button>
@@ -940,6 +946,14 @@ const AIChat: React.FC = () => {
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-700">
               <strong>Authentication Required:</strong> Please sign in to use the AI assistants.
+            </p>
+          </div>
+        )}
+
+        {!session && isAuthenticated && (
+          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <p className="text-sm text-orange-700">
+              <strong>Session Required:</strong> Waiting for authentication session to be established.
             </p>
           </div>
         )}
