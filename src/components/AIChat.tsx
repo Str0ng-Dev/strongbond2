@@ -69,6 +69,18 @@ const AIChat: React.FC = () => {
   // Valid UUID for testing - in production, get from auth
   const userId = '39ce1d87-e47c-455c-951a-644a849b2a11';
 
+  // Mock assistant IDs - these should match your database
+  const assistantIdMap: Record<UserRole, string> = {
+    'Dad': 'f47ac10b-58cc-4372-a567-0e02b2c3d479', // Replace with actual assistant ID
+    'Mom': 'f47ac10b-58cc-4372-a567-0e02b2c3d480', // Replace with actual assistant ID
+    'Coach': 'f47ac10b-58cc-4372-a567-0e02b2c3d481', // Replace with actual assistant ID
+    'Son': 'f47ac10b-58cc-4372-a567-0e02b2c3d482', // Replace with actual assistant ID
+    'Daughter': 'f47ac10b-58cc-4372-a567-0e02b2c3d483', // Replace with actual assistant ID
+    'Single Man': 'f47ac10b-58cc-4372-a567-0e02b2c3d484', // Replace with actual assistant ID
+    'Single Woman': 'f47ac10b-58cc-4372-a567-0e02b2c3d485', // Replace with actual assistant ID
+    'Church Leader': 'f47ac10b-58cc-4372-a567-0e02b2c3d486' // Replace with actual assistant ID
+  };
+
   // Initialize with welcome message
   React.useEffect(() => {
     const welcomeMessage: Message = {
@@ -88,25 +100,31 @@ const AIChat: React.FC = () => {
     try {
       setConnectionStatus('testing');
       
-      // Test with a simple message using valid UUID
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+      // Test with a simple message using the new endpoint
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: '39ce1d87-e47c-455c-951a-644a849b2a11',
+          user_id: userId,
           message: 'Hello',
-          assistantRole: selectedAssistant.role
+          assistant_id: assistantIdMap[selectedAssistant.role]
         })
       });
 
       if (response.ok) {
-        setConnectionStatus('connected');
-        setError(null);
+        const data = await response.json();
+        if (data.success) {
+          setConnectionStatus('connected');
+          setError(null);
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
       } else {
-        throw new Error(`HTTP ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
     } catch (error) {
       console.error('Connection test failed:', error);
@@ -126,22 +144,23 @@ const AIChat: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageText = input;
     setInput('');
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          conversationId,
-          userId,
-          message: input,
-          assistantRole: selectedAssistant.role
+          user_id: userId,
+          message: messageText,
+          assistant_id: assistantIdMap[selectedAssistant.role],
+          conversation_id: conversationId
         })
       });
 
@@ -154,8 +173,8 @@ const AIChat: React.FC = () => {
 
       if (data.success) {
         // Update conversation ID if this is a new conversation
-        if (data.conversationId && !conversationId) {
-          setConversationId(data.conversationId);
+        if (data.conversation_id && !conversationId) {
+          setConversationId(data.conversation_id);
         }
 
         const aiMessage: Message = {
