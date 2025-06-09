@@ -168,7 +168,7 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6" style={{ width: '300px' }}>
+      <div className="bg-white rounded-2xl shadow-lg p-6\" style={{ width: '300px' }}>
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
