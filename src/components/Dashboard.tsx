@@ -387,10 +387,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           <div className="col-span-1 lg:col-span-2 w-full space-y-8">
             <TodaysExperience key={refreshKey} userData={userData} />
           </div>
-        
-        </div> {/* End max-w-7xl wrapper */}
-      </div> {/* End full-page gradient wrapper */}
-    </div> {/* End main dashboard container */}
+        </div>
+      </div>
+    </div>
   );
 };
 
