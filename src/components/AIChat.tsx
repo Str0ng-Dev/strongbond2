@@ -180,63 +180,20 @@ const AIChat: React.FC = () => {
           throw new Error('Missing Supabase environment variables');
         }
         
-        console.log('🔐 Getting session...');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Don't wait for getSession() - it seems to hang
+        // Instead, rely on the auth state change listener
+        console.log('🔐 Setting up auth listener...');
         
-        if (!mounted) return;
-        
-        if (sessionError) {
-          console.error('❌ Session error:', sessionError);
-          if (mounted) {
-            setError(`Failed to get user session: ${sessionError.message}`);
+        // Set a shorter fallback timeout in case auth state never fires
+        setTimeout(() => {
+          if (mounted && !authLoaded) {
+            console.log('🔐 No auth state received, defaulting to logged out');
             setIsAuthenticated(false);
             setUserId(null);
             setUserOrgId(null);
             setAuthLoaded(true);
           }
-          return;
-        }
-
-        console.log('🔐 Session result:', session ? '✅ Found session' : '❌ No session');
-        
-        if (!session?.user) {
-          if (mounted) {
-            console.log('🔐 No authenticated user - showing login screen');
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserOrgId(null);
-            setAuthLoaded(true);
-          }
-          return;
-        }
-
-        console.log('🔐 User authenticated:', session.user.id);
-        
-        if (mounted) {
-          setIsAuthenticated(true);
-          setUserId(session.user.id);
-          setUserOrgId(null);
-          setAuthLoaded(true);
-        }
-        
-        // Get user data from users table (optional, don't block on this)
-        try {
-          console.log('👤 Fetching user org data...');
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('org_id')
-            .eq('id', session.user.id)
-            .single();
-
-          if (mounted && userData?.org_id) {
-            console.log('👤 User org_id found:', userData.org_id);
-            setUserOrgId(userData.org_id);
-          } else {
-            console.log('👤 No org_id or user not found in users table');
-          }
-        } catch (userQueryError) {
-          console.error('👤 User query failed (continuing anyway):', userQueryError);
-        }
+        }, 1000);
 
       } catch (error) {
         console.error('❌ Auth initialization failed:', error);
@@ -250,24 +207,30 @@ const AIChat: React.FC = () => {
       }
     };
 
-    // Safety timeout - force completion after 3 seconds (reduced from 5)
+    // Safety timeout - force completion after 2 seconds
     authTimeout = setTimeout(() => {
-      if (mounted) {
+      if (mounted && !authLoaded) {
         console.warn('⏰ Auth initialization timed out, forcing completion');
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
         setAuthLoaded(true);
-        setError('Authentication timed out - please try refreshing the page');
       }
-    }, 3000);
+    }, 2000);
 
     initializeAuth();
 
-    // Listen for auth state changes
+    // Listen for auth state changes - this is our primary auth method
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
       console.log('🔐 Auth state changed:', event, session?.user?.id);
       
+      // Clear timeout since we got an auth state
+      clearTimeout(authTimeout);
+      
       if (event === 'SIGNED_IN' && session?.user) {
+        console.log('🔐 User signed in:', session.user.id);
         setIsAuthenticated(true);
         setUserId(session.user.id);
         setError(null);
@@ -275,6 +238,7 @@ const AIChat: React.FC = () => {
         
         // Get user org_id (optional)
         try {
+          console.log('👤 Fetching user org data...');
           const { data: userData } = await supabase
             .from('users')
             .select('org_id')
@@ -282,13 +246,17 @@ const AIChat: React.FC = () => {
             .single();
 
           if (mounted && userData?.org_id) {
+            console.log('👤 User org_id found:', userData.org_id);
             setUserOrgId(userData.org_id);
+          } else {
+            console.log('👤 No org_id found');
           }
         } catch (error) {
-          console.log('User org lookup failed, continuing with null org_id');
+          console.log('👤 User org lookup failed, continuing with null org_id');
         }
         
-      } else if (event === 'SIGNED_OUT') {
+      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || !session) {
+        console.log('🔐 User signed out or no session');
         if (mounted) {
           setIsAuthenticated(false);
           setUserId(null);
@@ -309,7 +277,7 @@ const AIChat: React.FC = () => {
       clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [authLoaded]);
 
   // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
