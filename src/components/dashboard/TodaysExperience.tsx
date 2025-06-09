@@ -146,9 +146,10 @@ const TodaysExperience: React.FC<TodaysExperienceProps> = ({ userData }) => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="bg-white rounded-2xl shadow-lg h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading today's devotional...</p>
         </div>
       </div>
     );
@@ -156,13 +157,17 @@ const TodaysExperience: React.FC<TodaysExperienceProps> = ({ userData }) => {
 
   if (!currentPlan || !devotionalPlan) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-8">
-          <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Active Devotional Plan</h3>
-          <p className="text-gray-600 mb-4">
+      <div className="bg-white rounded-2xl shadow-lg h-full flex items-center justify-center">
+        <div className="text-center p-8">
+          <BookOpen className="w-20 h-20 text-gray-300 mx-auto mb-6" />
+          <h3 className="text-2xl font-semibold text-gray-900 mb-3">No Active Devotional Plan</h3>
+          <p className="text-gray-600 mb-6 max-w-md mx-auto">
             You don't have an active devotional plan. Start one from the marketplace to begin your journey.
           </p>
+          <button className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            <BookOpen className="w-5 h-5 mr-2" />
+            Browse Plans
+          </button>
         </div>
       </div>
     );
@@ -172,25 +177,25 @@ const TodaysExperience: React.FC<TodaysExperienceProps> = ({ userData }) => {
   const isCompleted = !currentPlan.is_active && currentPlan.completed_at;
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-lg overflow-hidden h-full flex flex-col">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-6 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-blue-600" />
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <BookOpen className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Today's Devotional</h2>
-              <div className="flex items-center space-x-4 text-sm text-gray-600">
+              <h2 className="text-2xl font-bold text-gray-900">Today's Devotional</h2>
+              <div className="flex items-center space-x-6 text-sm text-gray-600 mt-1">
                 <div className="flex items-center">
-                  <Calendar className="w-4 h-4 mr-1" />
+                  <Calendar className="w-4 h-4 mr-2" />
                   <span>
                     {isCompleted ? 'Plan Completed!' : `Day ${currentPlan.current_day} of ${devotionalPlan.duration_days}`}
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <Clock className="w-4 h-4 mr-1" />
+                  <Clock className="w-4 h-4 mr-2" />
                   <span>{Math.round(progressPercentage)}% Complete</span>
                 </div>
               </div>
@@ -200,46 +205,69 @@ const TodaysExperience: React.FC<TodaysExperienceProps> = ({ userData }) => {
       </div>
 
       {error && (
-        <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex-shrink-0">
           <p className="text-red-800 text-sm">{error}</p>
         </div>
       )}
 
-      <div className="p-6">
-        {/* Day Title */}
-        <div className="mb-6">
-          <h3 className="text-2xl font-bold text-gray-900 mb-2">{todayContent.title}</h3>
-        </div>
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6">
+          {/* Day Title */}
+          <div className="mb-8">
+            <h3 className="text-3xl font-bold text-gray-900 mb-3">{todayContent.title}</h3>
+          </div>
 
-        {/* Light Divider */}
-        <div className="border-t border-gray-100 mb-6"></div>
-
-        {/* Scripture Quote with Bible Icon */}
-        <div className="mb-6">
-          <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-6">
-            <div className="flex items-start space-x-4">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                <BookOpen className="w-4 h-4 text-blue-600" />
+          {/* Scripture Quote with Bible Icon */}
+          <div className="mb-8">
+            <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-6">
+              <div className="flex items-start space-x-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                  <BookOpen className="w-5 h-5 text-blue-600" />
+                </div>
+                <blockquote className="text-blue-900 italic font-medium text-xl leading-relaxed">
+                  "{todayContent.scripture}"
+                </blockquote>
               </div>
-              <blockquote className="text-blue-900 italic font-medium text-lg leading-relaxed">
-                "{todayContent.scripture}"
-              </blockquote>
+            </div>
+          </div>
+
+          {/* Devotional Content */}
+          <div className="mb-8">
+            <div className="prose prose-lg max-w-none">
+              <p className="text-gray-700 leading-relaxed text-lg">{todayContent.body}</p>
+            </div>
+          </div>
+
+          {/* Reflection Questions or Additional Content */}
+          <div className="mb-8 p-6 bg-gray-50 rounded-xl">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">Reflection Questions</h4>
+            <div className="space-y-3">
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-indigo-600 text-sm font-bold">1</span>
+                </div>
+                <p className="text-gray-700">How has God been revealing His purpose for your life recently?</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-indigo-600 text-sm font-bold">2</span>
+                </div>
+                <p className="text-gray-700">What gifts and passions has God placed in your heart?</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-indigo-600 text-sm font-bold">3</span>
+                </div>
+                <p className="text-gray-700">How can you use these gifts to serve others and glorify God?</p>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Light Divider */}
-        <div className="border-t border-gray-100 mb-6"></div>
-
-        {/* Devotional Content */}
-        <div className="mb-8">
-          <p className="text-gray-700 leading-relaxed text-lg">{todayContent.body}</p>
-        </div>
-
-        {/* Light Divider */}
-        <div className="border-t border-gray-100 mb-6"></div>
-
-        {/* Mark Complete Button - Prominent at Bottom */}
+      {/* Fixed Bottom Action */}
+      <div className="border-t border-gray-200 p-6 bg-gray-50 flex-shrink-0">
         <div className="text-center">
           {currentPlan.is_active ? (
             <button
