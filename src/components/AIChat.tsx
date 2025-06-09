@@ -291,15 +291,37 @@ const AIChat: React.FC = () => {
       console.log('🤖 Fetching assistants from database...');
       setError(null);
       
+      // Get user's role first
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('user_role, org_id')
+        .eq('id', userId)
+        .single();
+        
+      if (userError) {
+        console.log('Could not get user role, showing all assistants');
+      }
+      
+      const userRole = userData?.user_role;
+      console.log('👤 User role:', userRole);
+      
       let query = supabase
         .from('ai_assistants')
         .select('*')
         .eq('is_active', true);
 
-      if (userOrgId) {
-        query = query.or(`org_id.is.null,org_id.eq.${userOrgId}`);
+      // Filter based on org and user role
+      if (userOrgId || userData?.org_id) {
+        query = query.or(`org_id.is.null,org_id.eq.${userOrgId || userData?.org_id}`);
       } else {
         query = query.is('org_id', null);
+      }
+      
+      // Additional filtering based on user role if available
+      if (userRole) {
+        // For now, show all available assistants regardless of user role
+        // TODO: Implement role-based filtering if needed
+        console.log('🤖 Showing all assistants for user role:', userRole);
       }
 
       const timeoutPromise = new Promise((_, reject) => 
@@ -477,7 +499,7 @@ const AIChat: React.FC = () => {
     try {
       console.log('💬 Sending message to AI...');
       
-      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
@@ -554,7 +576,7 @@ const AIChat: React.FC = () => {
       console.log('🔗 Testing AI connection...');
       setConnectionStatus('testing');
       
-      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
