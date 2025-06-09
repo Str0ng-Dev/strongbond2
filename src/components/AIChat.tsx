@@ -149,19 +149,35 @@ const AIChat: React.FC = () => {
       setError(null);
       setIsLoggingIn(true);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      console.log('🔑 Starting test login...');
+      console.log('🔑 Email: gale@yocom.us');
+      
+      // Add timeout to prevent hanging
+      const loginPromise = supabase.auth.signInWithPassword({
         email: 'gale@yocom.us',
         password: 'C0vetrix'
       });
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login timeout after 10 seconds')), 10000)
+      );
+      
+      const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
+
+      console.log('🔑 Login response:', { data: !!data, error: error?.message });
 
       if (error) {
-        console.error('Login failed:', error.message);
+        console.error('🔑 Login failed:', error.message);
         setError(`Login failed: ${error.message}`);
+      } else {
+        console.log('🔑 Login successful, waiting for auth state change...');
+        // Don't set any state here - let the auth listener handle it
       }
     } catch (loginError) {
-      console.error('Login error:', loginError);
-      setError('Login failed: Network error');
+      console.error('🔑 Login error:', loginError);
+      setError(`Login failed: ${loginError instanceof Error ? loginError.message : 'Network error'}`);
     } finally {
+      console.log('🔑 Setting isLoggingIn to false');
       setIsLoggingIn(false);
     }
   };
