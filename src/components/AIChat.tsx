@@ -151,7 +151,6 @@ const AIChat: React.FC = () => {
       
       console.log('🔑 Starting real login...');
       
-      // Add timeout to prevent hanging
       const loginPromise = supabase.auth.signInWithPassword({
         email: 'gale@yocom.us',
         password: 'C0vetrix'
@@ -170,20 +169,6 @@ const AIChat: React.FC = () => {
         setError(`Login failed: ${result.error.message}`);
       } else {
         console.log('🔑 Login successful, waiting for auth state change...');
-        // Don't set any state here - let the auth listener handle it
-      }
-    } catch (loginError) {
-      console.error('🔑 Login error:', loginError);
-      setError(`Login failed: ${loginError instanceof Error ? loginError.message : 'Network error'}`);
-    } finally {
-      console.log('🔑 Setting isLoggingIn to false');
-      setIsLoggingIn(false);
-    }
-  };error('🔑 Login failed:', error.message);
-        setError(`Login failed: ${error.message}`);
-      } else {
-        console.log('🔑 Login successful, waiting for auth state change...');
-        // Don't set any state here - let the auth listener handle it
       }
     } catch (loginError) {
       console.error('🔑 Login error:', loginError);
@@ -203,25 +188,11 @@ const AIChat: React.FC = () => {
       try {
         console.log('🔐 Starting auth initialization...');
         
-        // Check if environment variables are available
         if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
           throw new Error('Missing Supabase environment variables');
         }
         
-        // Don't wait for getSession() - it seems to hang
-        // Instead, rely on the auth state change listener
-        console.log('🔐 Setting up auth listener...');
-        
-        // Set a shorter fallback timeout in case auth state never fires
-        setTimeout(() => {
-          if (mounted && !authLoaded) {
-            console.log('🔐 No auth state received, defaulting to logged out');
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserOrgId(null);
-            setAuthLoaded(true);
-          }
-        }, 1000);
+        console.log('🔐 Setting up auth listener only...');
 
       } catch (error) {
         console.error('❌ Auth initialization failed:', error);
@@ -235,10 +206,9 @@ const AIChat: React.FC = () => {
       }
     };
 
-    // Safety timeout - force completion after 2 seconds
     authTimeout = setTimeout(() => {
       if (mounted && !authLoaded) {
-        console.warn('⏰ Auth initialization timed out, forcing completion');
+        console.warn('⏰ Auth initialization timed out, showing login screen');
         setIsAuthenticated(false);
         setUserId(null);
         setUserOrgId(null);
@@ -248,13 +218,11 @@ const AIChat: React.FC = () => {
 
     initializeAuth();
 
-    // Listen for auth state changes - this is our primary auth method
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
       console.log('🔐 Auth state changed:', event, session?.user?.id);
       
-      // Clear timeout since we got an auth state
       clearTimeout(authTimeout);
       
       if (event === 'SIGNED_IN' && session?.user) {
@@ -262,28 +230,36 @@ const AIChat: React.FC = () => {
         setIsAuthenticated(true);
         setUserId(session.user.id);
         setError(null);
-        setAuthLoaded(true);
+        setUserOrgId(null);
         
-        // Get user org_id (optional)
         try {
-          console.log('👤 Fetching user org data...');
-          const { data: userData } = await supabase
+          console.log('👤 Fetching user org data with timeout...');
+          
+          const userQuery = supabase
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
             .single();
+            
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('User query timeout')), 5000)
+          );
+          
+          const userData = await Promise.race([userQuery, timeoutPromise]) as any;
 
-          if (mounted && userData?.org_id) {
-            console.log('👤 User org_id found:', userData.org_id);
-            setUserOrgId(userData.org_id);
+          if (mounted && userData.data?.org_id) {
+            console.log('👤 User org_id found:', userData.data.org_id);
+            setUserOrgId(userData.data.org_id);
           } else {
-            console.log('👤 No org_id found');
+            console.log('👤 No org_id found, using null');
           }
         } catch (error) {
-          console.log('👤 User org lookup failed, continuing with null org_id');
+          console.log('👤 User org lookup failed/timed out, continuing with null org_id:', error);
         }
         
-      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || !session) {
+        setAuthLoaded(true);
+        
+      } else if (event === 'SIGNED_OUT' || !session) {
         console.log('🔐 User signed out or no session');
         if (mounted) {
           setIsAuthenticated(false);
@@ -305,7 +281,7 @@ const AIChat: React.FC = () => {
       clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, []); // FIXED: Empty dependency array
+  }, []);
 
   // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
@@ -315,13 +291,11 @@ const AIChat: React.FC = () => {
       console.log('🤖 Fetching assistants from database...');
       setError(null);
       
-      // Query assistants with timeout
       let query = supabase
         .from('ai_assistants')
         .select('*')
         .eq('is_active', true);
 
-      // Add org filter - get global assistants (org_id IS NULL) or user's org assistants
       if (userOrgId) {
         query = query.or(`org_id.is.null,org_id.eq.${userOrgId}`);
       } else {
@@ -341,7 +315,6 @@ const AIChat: React.FC = () => {
       const dbAssistants = result.data || [];
       console.log('🤖 Found assistants in DB:', dbAssistants.length);
 
-      // Map database assistants to UI assistants
       const mappedAssistants = mockAssistants.map(mockAssistant => {
         const dbAssistant = dbAssistants.find((db: DBAssistant) => 
           db.user_role === mockAssistant.role
@@ -359,7 +332,6 @@ const AIChat: React.FC = () => {
       console.log('🤖 Mapped assistants:', mappedAssistants.length);
       setAvailableAssistants(mappedAssistants);
       
-      // Auto-select first available assistant
       if (mappedAssistants.length > 0 && !selectedAssistant) {
         setSelectedAssistant(mappedAssistants[0]);
       }
@@ -400,11 +372,9 @@ const AIChat: React.FC = () => {
       const convData = result.data || [];
       setConversations(convData);
       
-      // Auto-load the most recent conversation
       if (convData.length > 0) {
         await loadConversation(convData[0].id);
       } else {
-        // No existing conversations, start fresh
         setMessages([]);
         setCurrentConversationId(null);
         addWelcomeMessage();
@@ -413,7 +383,6 @@ const AIChat: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
       setError(`Unable to load conversation history: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Still show welcome message even if conversations fail
       setMessages([]);
       setCurrentConversationId(null);
       addWelcomeMessage();
@@ -446,7 +415,6 @@ const AIChat: React.FC = () => {
         throw result.error;
       }
 
-      // Convert database messages to UI messages
       const uiMessages: Message[] = (result.data || []).map((dbMsg: DBMessage) => ({
         id: dbMsg.id,
         content: dbMsg.content,
@@ -461,7 +429,6 @@ const AIChat: React.FC = () => {
     } catch (error) {
       console.error('Failed to load conversation:', error);
       setError(`Unable to load conversation messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Fallback to welcome message
       addWelcomeMessage();
     } finally {
       setIsLoading(false);
@@ -490,7 +457,7 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Send message to AI - MOCK VERSION
+  // Send message to AI
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated) return;
 
@@ -508,39 +475,60 @@ const AIChat: React.FC = () => {
     setError(null);
 
     try {
-      console.log('💬 Sending mock message:', messageText);
+      console.log('💬 Sending message to AI...');
       
-      // Mock delay for AI response
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          message: messageText,
+          assistant_id: selectedAssistant.assistantId,
+          conversation_id: currentConversationId
+        })
+      });
       
-      // Mock AI response
-      const mockResponses = [
-        "Thank you for sharing that with me. I'm here to listen and support you on your spiritual journey.",
-        "That's a wonderful question. Let me share some thoughts that might help guide you.",
-        "I appreciate your openness. Faith is indeed a journey with many seasons.",
-        "Your heart's desire to grow spiritually is beautiful. Let's explore that together.",
-        "I hear the sincerity in your words. God works in mysterious ways through our experiences."
-      ];
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Message send timeout')), 30000)
+      );
       
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+      const response = await Promise.race([requestPromise, timeoutPromise]) as Response;
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: randomResponse,
-        sender: 'ai',
-        timestamp: new Date(),
-        role: selectedAssistant.role
-      };
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
 
-      setMessages(prev => [...prev, aiMessage]);
-      setConnectionStatus('connected');
-      
-      console.log('💬 Mock AI response sent');
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.conversation_id && !currentConversationId) {
+          setCurrentConversationId(data.conversation_id);
+          fetchConversations();
+        }
+
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: data.message,
+          sender: 'ai',
+          timestamp: new Date(),
+          role: selectedAssistant.role
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+        setConnectionStatus('connected');
+        console.log('💬 AI response received');
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
 
     } catch (error) {
       console.error('Send message failed:', error);
       setConnectionStatus('disconnected');
-      setError('Mock message failed');
+      setError(`Message failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       const errorMessage: Message = {
         id: 'error-' + Date.now(),
@@ -554,7 +542,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Test connection - MOCK VERSION
+  // Test connection
   const testConnection = async () => {
     if (!selectedAssistant?.assistantId || !userId || !isAuthenticated) {
       setConnectionStatus('disconnected');
@@ -563,20 +551,45 @@ const AIChat: React.FC = () => {
     }
 
     try {
-      console.log('🔗 Testing mock connection...');
+      console.log('🔗 Testing AI connection...');
       setConnectionStatus('testing');
       
-      // Mock delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          message: 'Hello',
+          assistant_id: selectedAssistant.assistantId
+        })
+      });
       
-      console.log('🔗 Mock connection successful');
-      setConnectionStatus('connected');
-      setError(null);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection test timeout')), 10000)
+      );
       
+      const response = await Promise.race([requestPromise, timeoutPromise]) as Response;
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log('🔗 Connection test successful');
+          setConnectionStatus('connected');
+          setError(null);
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
     } catch (error) {
       console.error('Connection test failed:', error);
       setConnectionStatus('disconnected');
-      setError('Mock connection failed');
+      setError(`Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -912,4 +925,5 @@ const AIChat: React.FC = () => {
     </div>
   );
 };
+
 export default AIChat;
