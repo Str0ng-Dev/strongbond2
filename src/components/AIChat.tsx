@@ -143,31 +143,35 @@ const AIChat: React.FC = () => {
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Test login function
+  // Test login function - MOCK VERSION
   const handleTestLogin = async () => {
     try {
       setError(null);
       setIsLoggingIn(true);
       
-      console.log('🔑 Starting test login...');
-      console.log('🔑 Email: gale@yocom.us');
+      console.log('🔑 Using mock login for development...');
       
-      // Add timeout to prevent hanging
-      const loginPromise = supabase.auth.signInWithPassword({
-        email: 'gale@yocom.us',
-        password: 'C0vetrix'
-      });
+      // Simulate a brief loading delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Login timeout after 10 seconds')), 10000)
-      );
+      // Mock successful login
+      const mockUserId = 'c39a7902-4ff4-44e0-a2e0-fee97fd504f4';
       
-      const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
-
-      console.log('🔑 Login response:', { data: !!data, error: error?.message });
-
-      if (error) {
-        console.error('🔑 Login failed:', error.message);
+      console.log('🔑 Mock login successful');
+      setIsAuthenticated(true);
+      setUserId(mockUserId);
+      setUserOrgId(null); // Individual user
+      setAuthLoaded(true);
+      setError(null);
+      
+    } catch (loginError) {
+      console.error('🔑 Login error:', loginError);
+      setError(`Login failed: ${loginError instanceof Error ? loginError.message : 'Network error'}`);
+    } finally {
+      console.log('🔑 Setting isLoggingIn to false');
+      setIsLoggingIn(false);
+    }
+  };error('🔑 Login failed:', error.message);
         setError(`Login failed: ${error.message}`);
       } else {
         console.log('🔑 Login successful, waiting for auth state change...');
@@ -196,7 +200,20 @@ const AIChat: React.FC = () => {
           throw new Error('Missing Supabase environment variables');
         }
         
+        // Don't wait for getSession() - it seems to hang
+        // Instead, rely on the auth state change listener
         console.log('🔐 Setting up auth listener...');
+        
+        // Set a shorter fallback timeout in case auth state never fires
+        setTimeout(() => {
+          if (mounted && !authLoaded) {
+            console.log('🔐 No auth state received, defaulting to logged out');
+            setIsAuthenticated(false);
+            setUserId(null);
+            setUserOrgId(null);
+            setAuthLoaded(true);
+          }
+        }, 1000);
 
       } catch (error) {
         console.error('❌ Auth initialization failed:', error);
@@ -210,16 +227,16 @@ const AIChat: React.FC = () => {
       }
     };
 
-    // Safety timeout - force completion after 3 seconds if no auth state change occurs
+    // Safety timeout - force completion after 2 seconds
     authTimeout = setTimeout(() => {
-      if (mounted) {
+      if (mounted && !authLoaded) {
         console.warn('⏰ Auth initialization timed out, forcing completion');
         setIsAuthenticated(false);
         setUserId(null);
         setUserOrgId(null);
         setAuthLoaded(true);
       }
-    }, 3000);
+    }, 2000);
 
     initializeAuth();
 
@@ -237,6 +254,7 @@ const AIChat: React.FC = () => {
         setIsAuthenticated(true);
         setUserId(session.user.id);
         setError(null);
+        setAuthLoaded(true);
         
         // Get user org_id (optional)
         try {
@@ -252,15 +270,10 @@ const AIChat: React.FC = () => {
             setUserOrgId(userData.org_id);
           } else {
             console.log('👤 No org_id found');
-            setUserOrgId(null);
           }
         } catch (error) {
           console.log('👤 User org lookup failed, continuing with null org_id');
-          setUserOrgId(null);
         }
-        
-        // Set auth loaded AFTER all other state updates
-        setAuthLoaded(true);
         
       } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || !session) {
         console.log('🔐 User signed out or no session');
@@ -274,8 +287,6 @@ const AIChat: React.FC = () => {
           setConversations([]);
           setCurrentConversationId(null);
           setError(null);
-          
-          // Set auth loaded AFTER all other state updates
           setAuthLoaded(true);
         }
       }
@@ -286,49 +297,27 @@ const AIChat: React.FC = () => {
       clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, []); // Empty dependency array - this effect should only run once
+  }, []); // FIXED: Empty dependency array
 
-  // Fetch available assistants based on user's org
+  // Fetch available assistants based on user's org - MOCK VERSION
   const fetchAssistants = async () => {
     if (!userId || !isAuthenticated) return;
 
     try {
+      console.log('🤖 Loading mock assistants...');
       setError(null);
       
-      // Query assistants available to user's org or global assistants
-      let query = supabase
-        .from('ai_assistants')
-        .select('*')
-        .eq('is_active', true);
+      // Mock delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Create mock assistants with fake IDs
+      const mappedAssistants = mockAssistants.map((mockAssistant, index) => ({
+        ...mockAssistant,
+        assistantId: `mock-assistant-${index + 1}`,
+        openai_assistant_id: `asst_mock_${mockAssistant.role.toLowerCase().replace(' ', '_')}`
+      }));
 
-      // Add org filter - get global assistants (org_id IS NULL) or user's org assistants
-      if (userOrgId) {
-        query = query.or(`org_id.is.null,org_id.eq.${userOrgId}`);
-      } else {
-        query = query.is('org_id', null);
-      }
-
-      const { data: dbAssistants, error: assistantError } = await query;
-
-      if (assistantError) {
-        throw assistantError;
-      }
-
-      // Map database assistants to UI assistants
-      const mappedAssistants = mockAssistants.map(mockAssistant => {
-        const dbAssistant = dbAssistants?.find((db: DBAssistant) => 
-          db.user_role === mockAssistant.role
-        );
-        
-        return {
-          ...mockAssistant,
-          assistantId: dbAssistant?.id,
-          openai_assistant_id: dbAssistant?.openai_assistant_id,
-          name: dbAssistant?.name || mockAssistant.name,
-          description: dbAssistant?.description || mockAssistant.description
-        };
-      }).filter(assistant => assistant.assistantId);
-
+      console.log('🤖 Mock assistants loaded:', mappedAssistants.length);
       setAvailableAssistants(mappedAssistants);
       
       // Auto-select first available assistant
@@ -344,34 +333,21 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Fetch conversations for selected assistant
+  // Fetch conversations for selected assistant - MOCK VERSION
   const fetchConversations = async () => {
     if (!userId || !isAuthenticated || !selectedAssistant?.assistantId) return;
 
     try {
-      const { data: convData, error: convError } = await supabase
-        .from('ai_conversations')
-        .select('id, title, last_message_at, created_at')
-        .eq('user_id', userId)
-        .eq('assistant_id', selectedAssistant.assistantId)
-        .order('last_message_at', { ascending: false })
-        .limit(10);
-
-      if (convError) {
-        throw convError;
-      }
-
-      setConversations(convData || []);
+      console.log('💬 Loading mock conversations...');
       
-      // Auto-load the most recent conversation
-      if (convData && convData.length > 0) {
-        await loadConversation(convData[0].id);
-      } else {
-        // No existing conversations, start fresh
-        setMessages([]);
-        setCurrentConversationId(null);
-        addWelcomeMessage();
-      }
+      // Mock delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Mock conversations - empty for fresh start
+      setConversations([]);
+      setMessages([]);
+      setCurrentConversationId(null);
+      addWelcomeMessage();
 
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
@@ -381,42 +357,12 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Load specific conversation and its messages
+  // Load specific conversation and its messages - MOCK VERSION
   const loadConversation = async (conversationId: string) => {
-    if (!userId || !isAuthenticated) return;
-
-    try {
-      setIsLoading(true);
-      setCurrentConversationId(conversationId);
-
-      const { data: messageData, error: messageError } = await supabase
-        .from('ai_messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
-
-      if (messageError) {
-        throw messageError;
-      }
-
-      // Convert database messages to UI messages
-      const uiMessages: Message[] = messageData?.map((dbMsg: DBMessage) => ({
-        id: dbMsg.id,
-        content: dbMsg.content,
-        sender: dbMsg.sender_type === 'user' ? 'user' : 'ai',
-        timestamp: new Date(dbMsg.created_at),
-        role: selectedAssistant?.role
-      })) || [];
-
-      setMessages(uiMessages);
-      setError(null);
-
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-      setError('Unable to load conversation messages.');
-    } finally {
-      setIsLoading(false);
-    }
+    console.log('💬 Mock: Loading conversation', conversationId);
+    // Just add welcome message for now
+    setCurrentConversationId(conversationId);
+    addWelcomeMessage();
   };
 
   // Add welcome message
@@ -441,7 +387,7 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Send message to AI
+  // Send message to AI - MOCK VERSION
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated) return;
 
@@ -459,52 +405,39 @@ const AIChat: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          message: messageText,
-          assistant_id: selectedAssistant.assistantId,
-          conversation_id: currentConversationId
-        })
-      });
+      console.log('💬 Sending mock message:', messageText);
+      
+      // Mock delay for AI response
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Mock AI response
+      const mockResponses = [
+        "Thank you for sharing that with me. I'm here to listen and support you on your spiritual journey.",
+        "That's a wonderful question. Let me share some thoughts that might help guide you.",
+        "I appreciate your openness. Faith is indeed a journey with many seasons.",
+        "Your heart's desire to grow spiritually is beautiful. Let's explore that together.",
+        "I hear the sincerity in your words. God works in mysterious ways through our experiences."
+      ];
+      
+      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: randomResponse,
+        sender: 'ai',
+        timestamp: new Date(),
+        role: selectedAssistant.role
+      };
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Update conversation ID if this is a new conversation
-        if (data.conversation_id && !currentConversationId) {
-          setCurrentConversationId(data.conversation_id);
-          fetchConversations();
-        }
-
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: data.message,
-          sender: 'ai',
-          timestamp: new Date(),
-          role: selectedAssistant.role
-        };
-
-        setMessages(prev => [...prev, aiMessage]);
-        setConnectionStatus('connected');
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
+      setMessages(prev => [...prev, aiMessage]);
+      setConnectionStatus('connected');
+      
+      console.log('💬 Mock AI response sent');
 
     } catch (error) {
       console.error('Send message failed:', error);
       setConnectionStatus('disconnected');
-      setError(error instanceof Error ? error.message : 'Unknown error');
+      setError('Mock message failed');
       
       const errorMessage: Message = {
         id: 'error-' + Date.now(),
@@ -518,7 +451,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Test connection
+  // Test connection - MOCK VERSION
   const testConnection = async () => {
     if (!selectedAssistant?.assistantId || !userId || !isAuthenticated) {
       setConnectionStatus('disconnected');
@@ -527,37 +460,20 @@ const AIChat: React.FC = () => {
     }
 
     try {
+      console.log('🔗 Testing mock connection...');
       setConnectionStatus('testing');
       
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          message: 'Hello',
-          assistant_id: selectedAssistant.assistantId
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setConnectionStatus('connected');
-          setError(null);
-        } else {
-          throw new Error(data.error || 'Unknown error');
-        }
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+      // Mock delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('🔗 Mock connection successful');
+      setConnectionStatus('connected');
+      setError(null);
+      
     } catch (error) {
       console.error('Connection test failed:', error);
       setConnectionStatus('disconnected');
-      setError(error instanceof Error ? error.message : 'Connection failed');
+      setError('Mock connection failed');
     }
   };
 
