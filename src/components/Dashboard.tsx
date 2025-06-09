@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, BookOpen, Users as UsersIcon, Heart, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { OnboardingData, User } from '../types';
-import DevotionalMarketplace from './dashboard/DevotionalMarketplace';
 import CurrentPlan from './dashboard/CurrentPlan';
 import TodaysExperience from './dashboard/TodaysExperience';
 import Connections from './dashboard/Connections';
@@ -20,7 +19,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [currentView, setCurrentView] = useState<'dashboard' | 'devotionals' | 'user-connections'>('dashboard');
-  const [isFeaturedCollapsed, setIsFeaturedCollapsed] = useState(true); // Changed to true
+  const [isFeaturedCollapsed, setIsFeaturedCollapsed] = useState(true);
 
   useEffect(() => {
     loadUserData();
@@ -373,10 +372,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Quick Start & Connections */}
-          <div className="lg:col-span-1 space-y-8">
-            <DevotionalMarketplace onPlanStarted={handlePlanUpdate} />
+        {/* Main Dashboard Grid - Now using 2 columns instead of 3 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Column - Connections (now wider) */}
+          <div className="space-y-8">
             <Connections 
               currentUser={currentUser} 
               onUpdate={handleGroupUpdate}
@@ -384,7 +383,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
 
           {/* Right Column - Current Plan & Today's Experience */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="space-y-8">
             <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
             <TodaysExperience key={refreshKey} userData={userData} />
           </div>
