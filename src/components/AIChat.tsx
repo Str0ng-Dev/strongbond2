@@ -137,7 +137,8 @@ const AIChat: React.FC = () => {
   const [authLoaded, setAuthLoaded] = useState(false);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [lastAuthEvent, setLastAuthEvent] = useState<string | null>(null);
   // Test login function
   const handleTestLogin = async () => {
     try {
@@ -215,33 +216,75 @@ const AIChat: React.FC = () => {
 
     initializeAuth();
 
-   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+ const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
   if (!mounted) return;
   
   console.log('🔐 Auth state changed:', event, session?.user?.id);
   
-  clearTimeout(authTimeout);
-  setSession(session);
-  
-  // ✅ ADD THIS CHECK - Skip if already authenticated and session exists
-  if (event === 'INITIAL_SESSION' && isAuthenticated && session?.user?.id === userId) {
-    console.log('🔐 Skipping re-initialization - user already authenticated');
+  // ✅ Prevent duplicate processing
+  if (isInitializing || (event === lastAuthEvent && session?.user?.id === userId)) {
+    console.log('🔐 Skipping duplicate auth event');
     return;
   }
   
+  setIsInitializing(true);
+  setLastAuthEvent(event);
+  clearTimeout(authTimeout);
+  setSession(session);
+  
   if (event === 'SIGNED_IN' && session?.user) {
-    // ✅ ADD THIS CHECK - Skip if same user
-    if (session.user.id === userId && isAuthenticated) {
-      console.log('🔐 Skipping re-initialization - same user already signed in');
-      return;
-    }
-    
     console.log('🔐 User signed in:', session.user.id);
     setIsAuthenticated(true);
     setUserId(session.user.id);
-    // ... rest of your existing code
-        setError(null);
-        setUserOrgId(null);
+    setError(null);
+    setUserOrgId(null);
+    
+    try {
+      console.log('👤 Fetching user org data with timeout...');
+      
+      const userQuery = supabase
+        .from('users')
+        .select('org_id')
+        .eq('id', session.user.id)
+        .single();
+        
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('User query timeout')), 15000)
+      );
+      
+      const userData = await Promise.race([userQuery, timeoutPromise]) as any;
+
+      if (mounted && userData.data?.org_id) {
+        console.log('👤 User org_id found:', userData.data.org_id);
+        setUserOrgId(userData.data.org_id);
+      } else {
+        console.log('👤 No org_id found, using null');
+      }
+    } catch (error) {
+      console.log('👤 User org lookup failed/timed out, continuing with null org_id:', error);
+    }
+    
+    setAuthLoaded(true);
+    setIsInitializing(false); // ✅ Reset flag
+    
+  } else if (event === 'SIGNED_OUT' || !session) {
+    console.log('🔐 User signed out or no session');
+    if (mounted) {
+      setIsAuthenticated(false);
+      setUserId(null);
+      setUserOrgId(null);
+      setSession(null);
+      setAvailableAssistants([]);
+      setSelectedAssistant(null);
+      setMessages([]);
+      setConversations([]);
+      setCurrentConversationId(null);
+      setError(null);
+      setAuthLoaded(true);
+      setIsInitializing(false); // ✅ Reset flag
+    }
+  }
+});
         
         try {
           console.log('👤 Fetching user org data with timeout...');
@@ -268,7 +311,8 @@ const AIChat: React.FC = () => {
           console.log('👤 User org lookup failed/timed out, continuing with null org_id:', error);
         }
         
-        setAuthLoaded(true);
+setAuthLoaded(true);
+        setIsInitializing(false); // ✅ Reset flag
         
       } else if (event === 'SIGNED_OUT' || !session) {
         console.log('🔐 User signed out or no session');
@@ -284,6 +328,8 @@ const AIChat: React.FC = () => {
           setCurrentConversationId(null);
           setError(null);
           setAuthLoaded(true);
+          setIsInitializing(false); // ✅ Reset flag
+
         }
       }
     });
