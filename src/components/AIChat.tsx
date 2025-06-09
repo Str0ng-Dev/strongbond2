@@ -277,7 +277,7 @@ const AIChat: React.FC = () => {
       clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, [authLoaded]);
+  }, []); // FIXED: Empty dependency array
 
   // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
