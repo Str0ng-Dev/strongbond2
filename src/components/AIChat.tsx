@@ -1,9 +1,7 @@
-// File: src/components/AIChat.tsx
-// AI chat interface integrated with Supabase Edge Function
-
 import React, { useState, useEffect } from 'react';
-import { Send, Bot, User, Heart, Book, Zap, Crown } from 'lucide-react';
+import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
 import { UserRole } from '../types/ai';
+import { createClient } from '@supabase/supabase-js';
 
 interface Message {
   id: string;
@@ -20,10 +18,36 @@ interface Assistant {
   icon: React.ComponentType<any>;
   color: string;
   description: string;
-  assistantId?: string; // Real database ID
+  assistantId?: string;
+  openai_assistant_id?: string;
 }
 
-const mockAssistants: Assistant[] = [
+interface Conversation {
+  id: string;
+  title: string;
+  last_message_at: string;
+  created_at: string;
+}
+
+interface DBAssistant {
+  id: string;
+  user_role: string;
+  name: string;
+  description: string;
+  openai_assistant_id: string;
+  is_active: boolean;
+  org_id: string | null;
+}
+
+interface DBMessage {
+  id: string;
+  conversation_id: string;
+  sender_type: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+const mockAssistants: Omit<Assistant, 'assistantId'>[] = [
   {
     id: '1',
     name: 'Dad',
@@ -55,137 +79,252 @@ const mockAssistants: Assistant[] = [
     icon: User,
     color: 'bg-purple-500',
     description: 'Peer companion and friend'
+  },
+  {
+    id: '5',
+    name: 'Daughter',
+    role: 'Daughter',
+    icon: Heart,
+    color: 'bg-rose-500',
+    description: 'Caring companion and friend'
+  },
+  {
+    id: '6',
+    name: 'Church Leader',
+    role: 'Church Leader',
+    icon: Book,
+    color: 'bg-indigo-500',
+    description: 'Pastoral guide and biblical teacher'
+  },
+  {
+    id: '7',
+    name: 'Single Man',
+    role: 'Single Man',
+    icon: User,
+    color: 'bg-teal-500',
+    description: 'Single man of faith and purpose'
+  },
+  {
+    id: '8',
+    name: 'Single Woman',
+    role: 'Single Woman',
+    icon: Heart,
+    color: 'bg-violet-500',
+    description: 'Single woman of faith and strength'
   }
 ];
 
 const AIChat: React.FC = () => {
+  // Initialize Supabase client
+  const supabase = createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY
+  );
+
+  // State management
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [selectedAssistant, setSelectedAssistant] = useState(mockAssistants[0]);
+  const [selectedAssistant, setSelectedAssistant] = useState<Assistant | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('testing');
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Data state
   const [availableAssistants, setAvailableAssistants] = useState<Assistant[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userOrgId, setUserOrgId] = useState<string | null>(null);
+  
+  // Loading states
   const [assistantsLoaded, setAssistantsLoaded] = useState(false);
+  const [authLoaded, setAuthLoaded] = useState(false);
+  const [conversationsLoaded, setConversationsLoaded] = useState(false);
 
-  // Valid UUID for testing - in production, get from auth
-  const userId = '39ce1d87-e47c-455c-951a-644a849b2a11';
-
-  // Fetch available assistants from database
-  const fetchAssistants = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_assistants?is_active=eq.true&select=*`, {
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (response.ok) {
-        const dbAssistants = await response.json();
+  // 1. Initialize authentication and user data
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // For development, use a test user ID
+        const testUserId = '39ce1d87-e47c-455c-951a-644a849b2a11';
+        setUserId(testUserId);
         
-        // Map database assistants to our UI assistants
-        const updatedAssistants = mockAssistants.map(assistant => {
-          const dbAssistant = dbAssistants.find((db: any) => db.user_role === assistant.role);
-          return {
-            ...assistant,
-            assistantId: dbAssistant?.id
-          };
-        }).filter(assistant => assistant.assistantId); // Only include assistants that exist in DB
+        // Try to get user data from the users table
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('org_id')
+          .eq('id', testUserId)
+          .single();
 
-        setAvailableAssistants(updatedAssistants);
-        
-        if (updatedAssistants.length > 0) {
-          setSelectedAssistant(updatedAssistants[0]);
-        } else {
-          setError('No AI assistants are available. Please contact your administrator.');
+        if (!userError && userData) {
+          setUserOrgId(userData.org_id);
         }
-      } else {
-        throw new Error('Failed to fetch assistants');
+
+        setAuthLoaded(true);
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+        setError('Failed to initialize user session');
+        setAuthLoaded(true);
       }
+    };
+
+    initializeAuth();
+  }, []);
+
+  // 2. Fetch available assistants based on user's org
+  const fetchAssistants = async () => {
+    if (!userId) return;
+
+    try {
+      setError(null);
+      
+      // Query assistants available to user's org or global assistants
+      let query = supabase
+        .from('ai_assistants')
+        .select('*')
+        .eq('is_active', true);
+
+      // Add org filter - get global assistants (org_id IS NULL) or user's org assistants
+      if (userOrgId) {
+        query = query.or(`org_id.is.null,org_id.eq.${userOrgId}`);
+      } else {
+        query = query.is('org_id', null);
+      }
+
+      const { data: dbAssistants, error: assistantError } = await query;
+
+      if (assistantError) {
+        throw assistantError;
+      }
+
+      // Map database assistants to UI assistants
+      const mappedAssistants = mockAssistants.map(mockAssistant => {
+        const dbAssistant = dbAssistants?.find((db: DBAssistant) => 
+          db.user_role === mockAssistant.role
+        );
+        
+        return {
+          ...mockAssistant,
+          assistantId: dbAssistant?.id,
+          openai_assistant_id: dbAssistant?.openai_assistant_id,
+          name: dbAssistant?.name || mockAssistant.name,
+          description: dbAssistant?.description || mockAssistant.description
+        };
+      }).filter(assistant => assistant.assistantId); // Only include configured assistants
+
+      setAvailableAssistants(mappedAssistants);
+      
+      // Auto-select first available assistant
+      if (mappedAssistants.length > 0 && !selectedAssistant) {
+        setSelectedAssistant(mappedAssistants[0]);
+      }
+
     } catch (error) {
       console.error('Failed to fetch assistants:', error);
-      setError('Unable to load AI assistants. Using fallback mode.');
-      setAvailableAssistants(mockAssistants); // Fallback to mock assistants
+      setError('Unable to load AI assistants. Please try again.');
     } finally {
       setAssistantsLoaded(true);
     }
   };
 
-  // Initialize component
-  useEffect(() => {
-    fetchAssistants();
-  }, []);
-
-  // Initialize with welcome message when assistant is selected
-  useEffect(() => {
-    if (selectedAssistant && assistantsLoaded) {
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        content: `Hello! I'm ${selectedAssistant.name}, your ${selectedAssistant.description}. I'm here to support you on your spiritual journey. How can I help you today?`,
-        sender: 'ai',
-        timestamp: new Date(),
-        role: selectedAssistant.role
-      };
-      setMessages([welcomeMessage]);
-
-      // Test connection only if we have a real assistant ID
-      if (selectedAssistant.assistantId) {
-        testConnection();
-      } else {
-        setConnectionStatus('disconnected');
-        setError('This assistant is not configured in the database.');
-      }
-    }
-  }, [selectedAssistant, assistantsLoaded]);
-
-  const testConnection = async () => {
-    if (!selectedAssistant.assistantId) {
-      setConnectionStatus('disconnected');
-      setError('Assistant not configured');
-      return;
-    }
+  // 3. Fetch conversations for selected assistant
+  const fetchConversations = async () => {
+    if (!userId || !selectedAssistant?.assistantId) return;
 
     try {
-      setConnectionStatus('testing');
-      
-      // Test with a simple message using the new endpoint
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          message: 'Hello',
-          assistant_id: selectedAssistant.assistantId
-        })
-      });
+      const { data: convData, error: convError } = await supabase
+        .from('ai_conversations')
+        .select('id, title, last_message_at, created_at')
+        .eq('user_id', userId)
+        .eq('assistant_id', selectedAssistant.assistantId)
+        .order('last_message_at', { ascending: false })
+        .limit(10);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setConnectionStatus('connected');
-          setError(null);
-        } else {
-          throw new Error(data.error || 'Unknown error');
-        }
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+      if (convError) {
+        throw convError;
       }
+
+      setConversations(convData || []);
+      
+      // Auto-load the most recent conversation
+      if (convData && convData.length > 0) {
+        await loadConversation(convData[0].id);
+      } else {
+        // No existing conversations, start fresh
+        setMessages([]);
+        setCurrentConversationId(null);
+        addWelcomeMessage();
+      }
+
     } catch (error) {
-      console.error('Connection test failed:', error);
-      setConnectionStatus('disconnected');
-      setError(error instanceof Error ? error.message : 'Connection failed');
+      console.error('Failed to fetch conversations:', error);
+      setError('Unable to load conversation history.');
+    } finally {
+      setConversationsLoaded(true);
     }
   };
 
+  // 4. Load specific conversation and its messages
+  const loadConversation = async (conversationId: string) => {
+    try {
+      setIsLoading(true);
+      setCurrentConversationId(conversationId);
+
+      const { data: messageData, error: messageError } = await supabase
+        .from('ai_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (messageError) {
+        throw messageError;
+      }
+
+      // Convert database messages to UI messages
+      const uiMessages: Message[] = messageData?.map((dbMsg: DBMessage) => ({
+        id: dbMsg.id,
+        content: dbMsg.content,
+        sender: dbMsg.sender_type === 'user' ? 'user' : 'ai',
+        timestamp: new Date(dbMsg.created_at),
+        role: selectedAssistant?.role
+      })) || [];
+
+      setMessages(uiMessages);
+      setError(null);
+
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+      setError('Unable to load conversation messages.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 5. Add welcome message
+  const addWelcomeMessage = () => {
+    if (!selectedAssistant) return;
+
+    const welcomeMessage: Message = {
+      id: 'welcome-' + Date.now(),
+      content: `Hello! I'm ${selectedAssistant.name}, your ${selectedAssistant.description}. I'm here to support you on your spiritual journey. How can I help you today?`,
+      sender: 'ai',
+      timestamp: new Date(),
+      role: selectedAssistant.role
+    };
+    setMessages([welcomeMessage]);
+  };
+
+  // 6. Start new conversation
+  const startNewConversation = () => {
+    setCurrentConversationId(null);
+    setMessages([]);
+    addWelcomeMessage();
+    setError(null);
+  };
+
+  // 7. Send message to AI
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !selectedAssistant.assistantId) return;
+    if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -211,7 +350,7 @@ const AIChat: React.FC = () => {
           user_id: userId,
           message: messageText,
           assistant_id: selectedAssistant.assistantId,
-          conversation_id: conversationId
+          conversation_id: currentConversationId
         })
       });
 
@@ -224,8 +363,10 @@ const AIChat: React.FC = () => {
 
       if (data.success) {
         // Update conversation ID if this is a new conversation
-        if (data.conversation_id && !conversationId) {
-          setConversationId(data.conversation_id);
+        if (data.conversation_id && !currentConversationId) {
+          setCurrentConversationId(data.conversation_id);
+          // Refresh conversations list
+          fetchConversations();
         }
 
         const aiMessage: Message = {
@@ -259,14 +400,78 @@ const AIChat: React.FC = () => {
     }
   };
 
+  // 8. Test connection
+  const testConnection = async () => {
+    if (!selectedAssistant?.assistantId || !userId) {
+      setConnectionStatus('disconnected');
+      setError('Assistant not configured or user not authenticated');
+      return;
+    }
+
+    try {
+      setConnectionStatus('testing');
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          message: 'Hello',
+          assistant_id: selectedAssistant.assistantId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setConnectionStatus('connected');
+          setError(null);
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      setConnectionStatus('disconnected');
+      setError(error instanceof Error ? error.message : 'Connection failed');
+    }
+  };
+
+  // 9. Handle assistant selection
   const switchAssistant = (assistant: Assistant) => {
     setSelectedAssistant(assistant);
-    setMessages([]); // Clear messages when switching
-    setConversationId(null); // Reset conversation
+    setCurrentConversationId(null);
+    setMessages([]);
+    setConversations([]);
+    setConversationsLoaded(false);
     setError(null);
   };
 
-  if (!assistantsLoaded) {
+  // Initialize data when auth is loaded
+  useEffect(() => {
+    if (authLoaded && userId) {
+      fetchAssistants();
+    }
+  }, [authLoaded, userId, userOrgId]);
+
+  // Load conversations when assistant is selected
+  useEffect(() => {
+    if (selectedAssistant && assistantsLoaded) {
+      fetchConversations();
+      if (selectedAssistant.assistantId) {
+        testConnection();
+      }
+    }
+  }, [selectedAssistant, assistantsLoaded]);
+
+  // Loading screen
+  if (!authLoaded || !assistantsLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
@@ -277,6 +482,7 @@ const AIChat: React.FC = () => {
     );
   }
 
+  // No assistants available
   if (availableAssistants.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -288,9 +494,10 @@ const AIChat: React.FC = () => {
           </p>
           <button 
             onClick={fetchAssistants}
-            className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600"
+            className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto"
           >
-            Retry
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry</span>
           </button>
         </div>
       </div>
@@ -311,14 +518,26 @@ const AIChat: React.FC = () => {
               </div>
             </div>
 
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              connectionStatus === 'connected' ? 'bg-green-100 text-green-700' :
-              connectionStatus === 'disconnected' ? 'bg-red-100 text-red-700' :
-              'bg-yellow-100 text-yellow-700'
-            }`}>
-              {connectionStatus === 'connected' ? '🟢 Edge Function Ready' :
-               connectionStatus === 'disconnected' ? '🔴 Connection Failed' :
-               '🟡 Testing...'}
+            <div className="flex items-center space-x-3">
+              {/* New Conversation Button */}
+              <button
+                onClick={startNewConversation}
+                className="flex items-center space-x-2 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-sm font-medium">New Chat</span>
+              </button>
+
+              {/* Connection Status */}
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                connectionStatus === 'connected' ? 'bg-green-100 text-green-700' :
+                connectionStatus === 'disconnected' ? 'bg-red-100 text-red-700' :
+                'bg-yellow-100 text-yellow-700'
+              }`}>
+                {connectionStatus === 'connected' ? '🟢 Connected' :
+                 connectionStatus === 'disconnected' ? '🔴 Disconnected' :
+                 '🟡 Testing...'}
+              </div>
             </div>
           </div>
 
@@ -342,7 +561,7 @@ const AIChat: React.FC = () => {
                     key={assistant.id}
                     onClick={() => switchAssistant(assistant)}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                      selectedAssistant.id === assistant.id
+                      selectedAssistant?.id === assistant.id
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
                         : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                     }`}
@@ -362,6 +581,28 @@ const AIChat: React.FC = () => {
               })}
             </div>
           </div>
+
+          {/* Conversation History */}
+          {conversations.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Recent conversations:</p>
+              <div className="flex space-x-2 overflow-x-auto">
+                {conversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => loadConversation(conv.id)}
+                    className={`px-3 py-2 rounded-lg border text-sm whitespace-nowrap transition-all ${
+                      currentConversationId === conv.id
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    {conv.title || 'Untitled'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -376,11 +617,12 @@ const AIChat: React.FC = () => {
               message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''
             }`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                message.sender === 'user' ? 'bg-blue-500' : selectedAssistant.color
+                message.sender === 'user' ? 'bg-blue-500' : selectedAssistant?.color || 'bg-gray-500'
               }`}>
                 {message.sender === 'user' ?
                   <User className="w-4 h-4 text-white" /> :
-                  React.createElement(selectedAssistant.icon, { className: "w-4 h-4 text-white" })
+                  selectedAssistant ? React.createElement(selectedAssistant.icon, { className: "w-4 h-4 text-white" }) :
+                  <Bot className="w-4 h-4 text-white" />
                 }
               </div>
               <div className={`p-3 rounded-lg ${
@@ -400,7 +642,7 @@ const AIChat: React.FC = () => {
         {isLoading && (
           <div className="flex justify-start">
             <div className="flex items-start space-x-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedAssistant.color}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedAssistant?.color || 'bg-gray-500'}`}>
                 <Bot className="w-4 h-4 text-white" />
               </div>
               <div className="bg-white p-3 rounded-lg shadow-sm border">
@@ -423,24 +665,25 @@ const AIChat: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder={`Share your heart with ${selectedAssistant.name}...`}
+            placeholder={selectedAssistant ? `Share your heart with ${selectedAssistant.name}...` : 'Select an assistant to start chatting...'}
             className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            disabled={isLoading || !selectedAssistant.assistantId}
+            disabled={isLoading || !selectedAssistant?.assistantId}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading || !selectedAssistant.assistantId}
+            disabled={!input.trim() || isLoading || !selectedAssistant?.assistantId}
             className="bg-purple-500 text-white p-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />
           </button>
         </div>
 
-        {connectionStatus === 'connected' && selectedAssistant.assistantId && (
+        {/* Status Messages */}
+        {connectionStatus === 'connected' && selectedAssistant?.assistantId && (
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-700">
               <strong>Live Mode:</strong> Connected to OpenAI Assistants API via Supabase Edge Function.
-              {conversationId && <span className="ml-2">Conversation ID: {conversationId.substring(0, 8)}...</span>}
+              {currentConversationId && <span className="ml-2">Conversation ID: {currentConversationId.substring(0, 8)}...</span>}
             </p>
           </div>
         )}
@@ -453,14 +696,14 @@ const AIChat: React.FC = () => {
             <button 
               onClick={testConnection}
               className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-              disabled={!selectedAssistant.assistantId}
+              disabled={!selectedAssistant?.assistantId}
             >
               Retry Connection
             </button>
           </div>
         )}
 
-        {!selectedAssistant.assistantId && (
+        {!selectedAssistant?.assistantId && selectedAssistant && (
           <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-700">
               <strong>Assistant Not Configured:</strong> This assistant needs to be set up in the database before it can be used.
