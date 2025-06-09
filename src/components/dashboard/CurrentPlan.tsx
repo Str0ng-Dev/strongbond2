@@ -168,7 +168,7 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      <div className="bg-white rounded-2xl shadow-lg p-6" style={{ width: '300px' }}>
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
@@ -179,28 +179,39 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
   if (!currentPlan || !devotionalPlan) {
     return (
       <>
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-3xl font-bold text-gray-900">My Current Plan</h2>
-            <button
-              onClick={() => setShowSwitchModal(true)}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Switch Plan"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden" style={{ width: '300px' }}>
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">My Current Plan</h2>
+                  <p className="text-xs text-gray-600">No active plan</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSwitchModal(true)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Switch Plan"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <div className="text-center py-12">
-            <BookOpen className="w-20 h-20 text-gray-300 mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-gray-900 mb-3">No Active Plan</h3>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">
-              You don't have an active devotional plan. Browse the marketplace to start your spiritual journey.
+          {/* Content */}
+          <div className="p-4 text-center">
+            <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">No Active Plan</h3>
+            <p className="text-xs text-gray-600 mb-4">
+              Start a devotional plan to begin your spiritual journey.
             </p>
             
-            {/* Large Centered Button */}
-            <button className="inline-flex items-center justify-center px-8 py-4 bg-blue-600 text-white text-lg font-semibold rounded-xl hover:bg-blue-700 transition-all duration-200 transform hover:scale-105 shadow-lg">
-              <Play className="w-6 h-6 mr-3" />
+            <button className="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+              <Play className="w-4 h-4 mr-2" />
               Browse Plans
             </button>
           </div>
@@ -223,109 +234,106 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
 
   return (
     <>
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden" style={{ width: '300px' }}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-3xl font-bold text-gray-900">My Current Plan</h2>
-          <button
-            onClick={() => setShowSwitchModal(true)}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Switch Plan"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <BookOpen className="w-4 h-4 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">My Current Plan</h2>
+                <p className="text-xs text-gray-600">
+                  {isCompleted ? 'Completed!' : `Day ${currentPlan.current_day} of ${devotionalPlan.duration_days}`}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSwitchModal(true)}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Switch Plan"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {error && (
-          <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-800 text-sm">{error}</p>
+          <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800 text-xs">{error}</p>
           </div>
         )}
 
         {/* Main Content */}
-        <div className="px-6 pb-6">
-          {/* Plan Title and Progress Badge */}
-          <div className="text-center mb-6">
-            <h3 className="text-2xl font-bold text-gray-900 mb-3">{devotionalPlan.title}</h3>
+        <div className="p-4">
+          {/* Plan Title */}
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">{devotionalPlan.title}</h3>
             
-            {/* Progress Pill Badge */}
-            <div className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full font-semibold text-lg shadow-lg">
-              {isCompleted ? (
-                <span>✅ Completed!</span>
-              ) : (
-                <span>Day {currentPlan.current_day} of {devotionalPlan.duration_days}</span>
-              )}
+            {/* Progress Bar */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-700">Progress</span>
+                <span className="text-xs font-medium text-blue-600">{Math.round(progressPercentage)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Large Centered Continue Button */}
-          <div className="text-center mb-6">
+          {/* Continue Button */}
+          <div className="mb-4">
             {currentPlan.is_active ? (
-              <button className="inline-flex items-center justify-center px-12 py-4 bg-gradient-to-r from-green-500 to-green-600 text-white text-xl font-bold rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-200 transform hover:scale-105 shadow-xl">
-                <Play className="w-6 h-6 mr-3" />
+              <button className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-bold rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 transform hover:scale-105">
+                <Play className="w-4 h-4 mr-2" />
                 Continue Plan
-                <ArrowRight className="w-6 h-6 ml-3" />
+                <ArrowRight className="w-4 h-4 ml-2" />
               </button>
             ) : (
-              <div className="inline-flex items-center justify-center px-12 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xl font-bold rounded-xl shadow-xl">
+              <div className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold rounded-lg">
                 <span>🎉 Plan Completed!</span>
               </div>
             )}
           </div>
 
           {/* Show Details Accordion */}
-          <div className="border-t border-gray-200 pt-4">
+          <div className="border-t border-gray-200 pt-3">
             <button
               onClick={() => setShowDetails(!showDetails)}
-              className="w-full flex items-center justify-between p-3 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between p-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
-              <span className="font-medium">
+              <span className="text-sm font-medium">
                 {showDetails ? 'Hide Details' : 'Show Details'}
               </span>
               {showDetails ? (
-                <ChevronUp className="w-5 h-5" />
+                <ChevronUp className="w-4 h-4" />
               ) : (
-                <ChevronDown className="w-5 h-5" />
+                <ChevronDown className="w-4 h-4" />
               )}
             </button>
 
             {/* Collapsible Details */}
             {showDetails && (
-              <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+              <div className="mt-3 space-y-3 p-3 bg-gray-50 rounded-lg">
                 {/* Author */}
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Author</p>
-                  <p className="font-medium text-gray-900">{devotionalPlan.author}</p>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Description</p>
-                  <p className="text-gray-700 leading-relaxed">{devotionalPlan.description}</p>
-                </div>
-
-                {/* Progress Details */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Progress</span>
-                    <span className="text-sm font-medium text-blue-600">{Math.round(progressPercentage)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                    />
-                  </div>
+                  <p className="text-xs text-gray-600 mb-1">Author</p>
+                  <p className="text-sm font-medium text-gray-900">{devotionalPlan.author}</p>
                 </div>
 
                 {/* Timeline Info */}
-                <div className="flex items-center justify-between text-sm text-gray-600">
+                <div className="flex items-center justify-between text-xs text-gray-600">
                   <div className="flex items-center">
-                    <Calendar className="w-4 h-4 mr-2" />
+                    <Calendar className="w-3 h-3 mr-1" />
                     <span>Started {new Date(currentPlan.start_date).toLocaleDateString()}</span>
                   </div>
                   {!isCompleted && (
-                    <span>{daysRemaining} days remaining</span>
+                    <span>{daysRemaining} days left</span>
                   )}
                   {isCompleted && (
                     <span>Completed {new Date(currentPlan.completed_at!).toLocaleDateString()}</span>
