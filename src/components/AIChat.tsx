@@ -240,7 +240,7 @@ const AIChat: React.FC = () => {
             .single();
             
           const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('User query timeout')), 5000)
+            setTimeout(() => reject(new Error('User query timeout')), 15000)
           );
           
           const userData = await Promise.race([userQuery, timeoutPromise]) as any;
@@ -379,7 +379,7 @@ const AIChat: React.FC = () => {
         .limit(10);
         
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Conversations query timeout')), 5000)
+        setTimeout(() => reject(new Error('Conversations query timeout')), 15000)
       );
       
       const result = await Promise.race([query, timeoutPromise]) as any;
