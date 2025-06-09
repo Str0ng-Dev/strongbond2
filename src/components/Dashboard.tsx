@@ -372,31 +372,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        {/* Dashboard Grid: Current Plan, Connections, and Today's Devotional */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-  {/* Left Column */}
-  <div className="space-y-8">
+  {/* Dashboard Grid: Current Plan, Connections, and Today's Devotional */}
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  {/* Left Column: 1/3 width */}
+  <div className="lg:col-span-1 space-y-8">
     <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
-  </div>
- <div className="col-span-1 lg:col-span-2 space-y-8">
     <Connections 
       currentUser={currentUser} 
       onUpdate={handleGroupUpdate}
     />
-  </div>
-  {/* Right Column */}
-  <div className="space-y-8">
-    <TodaysExperience key={refreshKey} userData={userData} />
   </div>
 
-  {/* Full Width Row Below */}
-  <div className="col-span-1 lg:col-span-2 space-y-8">
-    <Connections 
-      currentUser={currentUser} 
-      onUpdate={handleGroupUpdate}
-    />
+  {/* Right Column: 2/3 width */}
+  <div className="lg:col-span-2 space-y-8">
+    <TodaysExperience key={refreshKey} userData={userData} />
   </div>
 </div>
+
 
       </div>
     </div>
