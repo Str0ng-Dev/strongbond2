@@ -893,10 +893,7 @@ const AIChat: React.FC = () => {
   );
 };
 
-export default AIChat;import React, { useState, useEffect } from 'react';
-import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
-import { UserRole } from '../types/ai';
-import { supabase } from '../lib/supabase';
+export default AIChat;
 
 interface Message {
   id: string;
