@@ -143,27 +143,35 @@ const AIChat: React.FC = () => {
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Test login function - MOCK VERSION
+  // Test login function
   const handleTestLogin = async () => {
     try {
       setError(null);
       setIsLoggingIn(true);
       
-      console.log('🔑 Using mock login for development...');
+      console.log('🔑 Starting real login...');
       
-      // Simulate a brief loading delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Add timeout to prevent hanging
+      const loginPromise = supabase.auth.signInWithPassword({
+        email: 'gale@yocom.us',
+        password: 'C0vetrix'
+      });
       
-      // Mock successful login
-      const mockUserId = 'c39a7902-4ff4-44e0-a2e0-fee97fd504f4';
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login timeout after 8 seconds')), 8000)
+      );
       
-      console.log('🔑 Mock login successful');
-      setIsAuthenticated(true);
-      setUserId(mockUserId);
-      setUserOrgId(null); // Individual user
-      setAuthLoaded(true);
-      setError(null);
+      const result = await Promise.race([loginPromise, timeoutPromise]) as any;
       
+      console.log('🔑 Login response:', { success: !result.error, error: result.error?.message });
+
+      if (result.error) {
+        console.error('🔑 Login failed:', result.error.message);
+        setError(`Login failed: ${result.error.message}`);
+      } else {
+        console.log('🔑 Login successful, waiting for auth state change...');
+        // Don't set any state here - let the auth listener handle it
+      }
     } catch (loginError) {
       console.error('🔑 Login error:', loginError);
       setError(`Login failed: ${loginError instanceof Error ? loginError.message : 'Network error'}`);
@@ -299,25 +307,56 @@ const AIChat: React.FC = () => {
     };
   }, []); // FIXED: Empty dependency array
 
-  // Fetch available assistants based on user's org - MOCK VERSION
+  // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
     if (!userId || !isAuthenticated) return;
 
     try {
-      console.log('🤖 Loading mock assistants...');
+      console.log('🤖 Fetching assistants from database...');
       setError(null);
       
-      // Mock delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Create mock assistants with fake IDs
-      const mappedAssistants = mockAssistants.map((mockAssistant, index) => ({
-        ...mockAssistant,
-        assistantId: `mock-assistant-${index + 1}`,
-        openai_assistant_id: `asst_mock_${mockAssistant.role.toLowerCase().replace(' ', '_')}`
-      }));
+      // Query assistants with timeout
+      let query = supabase
+        .from('ai_assistants')
+        .select('*')
+        .eq('is_active', true);
 
-      console.log('🤖 Mock assistants loaded:', mappedAssistants.length);
+      // Add org filter - get global assistants (org_id IS NULL) or user's org assistants
+      if (userOrgId) {
+        query = query.or(`org_id.is.null,org_id.eq.${userOrgId}`);
+      } else {
+        query = query.is('org_id', null);
+      }
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Assistants query timeout')), 8000)
+      );
+      
+      const result = await Promise.race([query, timeoutPromise]) as any;
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      const dbAssistants = result.data || [];
+      console.log('🤖 Found assistants in DB:', dbAssistants.length);
+
+      // Map database assistants to UI assistants
+      const mappedAssistants = mockAssistants.map(mockAssistant => {
+        const dbAssistant = dbAssistants.find((db: DBAssistant) => 
+          db.user_role === mockAssistant.role
+        );
+        
+        return {
+          ...mockAssistant,
+          assistantId: dbAssistant?.id,
+          openai_assistant_id: dbAssistant?.openai_assistant_id,
+          name: dbAssistant?.name || mockAssistant.name,
+          description: dbAssistant?.description || mockAssistant.description
+        };
+      }).filter(assistant => assistant.assistantId);
+
+      console.log('🤖 Mapped assistants:', mappedAssistants.length);
       setAvailableAssistants(mappedAssistants);
       
       // Auto-select first available assistant
@@ -327,42 +366,106 @@ const AIChat: React.FC = () => {
 
     } catch (error) {
       console.error('Failed to fetch assistants:', error);
-      setError('Unable to load AI assistants. Please try again.');
+      setError(`Unable to load AI assistants: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setAssistantsLoaded(true);
     }
   };
 
-  // Fetch conversations for selected assistant - MOCK VERSION
+  // Fetch conversations for selected assistant
   const fetchConversations = async () => {
     if (!userId || !isAuthenticated || !selectedAssistant?.assistantId) return;
 
     try {
-      console.log('💬 Loading mock conversations...');
+      console.log('💬 Fetching conversations...');
       
-      // Mock delay
-      await new Promise(resolve => setTimeout(resolve, 300));
+      const query = supabase
+        .from('ai_conversations')
+        .select('id, title, last_message_at, created_at')
+        .eq('user_id', userId)
+        .eq('assistant_id', selectedAssistant.assistantId)
+        .order('last_message_at', { ascending: false })
+        .limit(10);
+        
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Conversations query timeout')), 5000)
+      );
       
-      // Mock conversations - empty for fresh start
-      setConversations([]);
-      setMessages([]);
-      setCurrentConversationId(null);
-      addWelcomeMessage();
+      const result = await Promise.race([query, timeoutPromise]) as any;
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      const convData = result.data || [];
+      setConversations(convData);
+      
+      // Auto-load the most recent conversation
+      if (convData.length > 0) {
+        await loadConversation(convData[0].id);
+      } else {
+        // No existing conversations, start fresh
+        setMessages([]);
+        setCurrentConversationId(null);
+        addWelcomeMessage();
+      }
 
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
-      setError('Unable to load conversation history.');
+      setError(`Unable to load conversation history: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Still show welcome message even if conversations fail
+      setMessages([]);
+      setCurrentConversationId(null);
+      addWelcomeMessage();
     } finally {
       setConversationsLoaded(true);
     }
   };
 
-  // Load specific conversation and its messages - MOCK VERSION
+  // Load specific conversation and its messages
   const loadConversation = async (conversationId: string) => {
-    console.log('💬 Mock: Loading conversation', conversationId);
-    // Just add welcome message for now
-    setCurrentConversationId(conversationId);
-    addWelcomeMessage();
+    if (!userId || !isAuthenticated) return;
+
+    try {
+      setIsLoading(true);
+      setCurrentConversationId(conversationId);
+
+      const query = supabase
+        .from('ai_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+        
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Messages query timeout')), 5000)
+      );
+      
+      const result = await Promise.race([query, timeoutPromise]) as any;
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      // Convert database messages to UI messages
+      const uiMessages: Message[] = (result.data || []).map((dbMsg: DBMessage) => ({
+        id: dbMsg.id,
+        content: dbMsg.content,
+        sender: dbMsg.sender_type === 'user' ? 'user' : 'ai',
+        timestamp: new Date(dbMsg.created_at),
+        role: selectedAssistant?.role
+      }));
+
+      setMessages(uiMessages);
+      setError(null);
+
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+      setError(`Unable to load conversation messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fallback to welcome message
+      addWelcomeMessage();
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Add welcome message
