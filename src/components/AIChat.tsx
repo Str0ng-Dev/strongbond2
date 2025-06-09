@@ -500,7 +500,7 @@ const AIChat: React.FC = () => {
       const requestBody = {
         user_id: userId,           // ✅ Correct field name
         message: messageText,      // ✅ Correct field name
-        assistant_id: selectedAssistant.assistantId,  // ✅ Correct field name
+        assistantRole: selectedAssistant.role,  // ✅ use .role instead of.assistantId
         conversation_id: currentConversationId        // ✅ Correct field name
       };
 
@@ -582,8 +582,8 @@ const AIChat: React.FC = () => {
       const testBody = {
         user_id: userId,           // ✅ Correct field name
         message: 'Hello',          // ✅ Correct field name
-        assistant_id: selectedAssistant.assistantId  // ✅ Correct field name
-      };
+assistantRole: selectedAssistant.role  // ✅ use .role instead of .assistantId
+  };
 
       console.log('🧪 Test body:', testBody);
       
