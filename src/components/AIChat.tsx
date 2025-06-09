@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
 import { UserRole } from '../types/ai';
-import { createClient } from '@supabase/supabase-js';
-
-// Move Supabase client outside component to prevent multiple instances
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 interface Message {
   id: string;
