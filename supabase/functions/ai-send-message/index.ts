@@ -64,13 +64,16 @@ serve(async (req) => {
     // Initialize clients
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Initialize OpenAI with explicit error handling
+    // Initialize OpenAI with explicit error handling and v2 Assistants API
     let openai;
     try {
       openai = new OpenAI({ 
-        apiKey: openaiApiKey.trim() // Ensure no whitespace
+        apiKey: openaiApiKey.trim(), // Ensure no whitespace
+        defaultHeaders: {
+          'OpenAI-Beta': 'assistants=v2'
+        }
       })
-      console.log('OpenAI client initialized successfully')
+      console.log('OpenAI client initialized successfully with Assistants API v2')
     } catch (openaiInitError) {
       console.error('Failed to initialize OpenAI client:', openaiInitError)
       return new Response(
