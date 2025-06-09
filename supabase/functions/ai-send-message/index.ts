@@ -22,22 +22,36 @@ serve(async (req) => {
   }
 
   try {
-    // Check for required environment variables
+    // Check for required environment variables with detailed logging
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-    if (!openaiApiKey) {
+    // Debug logging for environment variables (without exposing actual keys)
+    console.log('Environment check:')
+    console.log('- OPENAI_API_KEY exists:', !!openaiApiKey)
+    console.log('- OPENAI_API_KEY length:', openaiApiKey?.length || 0)
+    console.log('- SUPABASE_URL exists:', !!supabaseUrl)
+    console.log('- SUPABASE_SERVICE_ROLE_KEY exists:', !!supabaseServiceKey)
+
+    if (!openaiApiKey || openaiApiKey.trim() === '') {
+      console.error('OpenAI API key is missing or empty')
       return new Response(
         JSON.stringify({ 
           error: 'OpenAI API key not configured',
-          details: 'Please set the OPENAI_API_KEY environment variable in your Supabase project settings'
+          details: 'The OPENAI_API_KEY environment variable is not set or is empty. Please check your Supabase Edge Function secrets configuration.',
+          debug: {
+            keyExists: !!openaiApiKey,
+            keyLength: openaiApiKey?.length || 0,
+            keyStartsWith: openaiApiKey ? openaiApiKey.substring(0, 7) + '...' : 'N/A'
+          }
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Supabase configuration missing')
       return new Response(
         JSON.stringify({ 
           error: 'Supabase configuration missing',
@@ -49,7 +63,24 @@ serve(async (req) => {
 
     // Initialize clients
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
-    const openai = new OpenAI({ apiKey: openaiApiKey })
+    
+    // Initialize OpenAI with explicit error handling
+    let openai;
+    try {
+      openai = new OpenAI({ 
+        apiKey: openaiApiKey.trim() // Ensure no whitespace
+      })
+      console.log('OpenAI client initialized successfully')
+    } catch (openaiInitError) {
+      console.error('Failed to initialize OpenAI client:', openaiInitError)
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to initialize OpenAI client',
+          details: openaiInitError instanceof Error ? openaiInitError.message : 'Unknown initialization error'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Parse request
     const { conversationId, userId, message, assistantRole }: SendMessageRequest = await req.json()
@@ -60,6 +91,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log(`Processing message for user ${userId} with role ${assistantRole || 'default'}`)
 
     // Step 1: Get user's preferred assistant or use provided role
     let targetAssistantRole = assistantRole || 'Coach' // Default fallback
@@ -103,6 +136,7 @@ serve(async (req) => {
       const systemPrompt = rolePrompts[targetAssistantRole as keyof typeof rolePrompts] || rolePrompts['Coach']
 
       try {
+        console.log('Making OpenAI chat completion request...')
         const completion = await openai.chat.completions.create({
           model: 'gpt-4-turbo-preview',
           messages: [
@@ -113,6 +147,7 @@ serve(async (req) => {
           temperature: 0.7
         })
 
+        console.log('OpenAI request successful')
         const responseText = completion.choices[0]?.message?.content || 'I apologize, but I encountered an issue generating a response.'
 
         // Handle conversation storage (simplified for fallback)
@@ -193,10 +228,27 @@ serve(async (req) => {
 
       } catch (openaiError) {
         console.error('OpenAI API error:', openaiError)
+        
+        // Provide more specific error information
+        let errorDetails = 'Unknown OpenAI error'
+        if (openaiError instanceof Error) {
+          errorDetails = openaiError.message
+          
+          // Check for specific API key related errors
+          if (openaiError.message.includes('401') || openaiError.message.includes('Incorrect API key')) {
+            errorDetails = `API key authentication failed. Please verify your OpenAI API key is correct and has sufficient credits. Error: ${openaiError.message}`
+          }
+        }
+        
         return new Response(
           JSON.stringify({ 
             error: 'OpenAI API error',
-            details: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error'
+            details: errorDetails,
+            debug: {
+              hasApiKey: !!openaiApiKey,
+              keyLength: openaiApiKey?.length || 0,
+              keyPrefix: openaiApiKey ? openaiApiKey.substring(0, 7) + '...' : 'N/A'
+            }
           }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
