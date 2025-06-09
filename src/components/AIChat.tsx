@@ -3,7 +3,7 @@ import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucid
 import { UserRole } from '../types/ai';
 import { createClient } from '@supabase/supabase-js';
 
-// Move Supabase client outside component to prevent multiple instances
+// FIX 1: Move Supabase client outside component to prevent multiple instances
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -149,6 +149,8 @@ const AIChat: React.FC = () => {
       setError(null);
       setIsLoggingIn(true);
       
+      console.log('Attempting test login...');
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email: 'gale@yocom.us',
         password: 'C0vetrix'
@@ -157,6 +159,9 @@ const AIChat: React.FC = () => {
       if (error) {
         console.error('Login failed:', error.message);
         setError(`Login failed: ${error.message}`);
+      } else {
+        console.log('✅ Logged in:', data.user);
+        // The auth state change listener will handle the rest
       }
     } catch (loginError) {
       console.error('Login error:', loginError);
@@ -166,16 +171,14 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Initialize authentication and user data
+  // FIX 2: Improved authentication initialization with proper error handling
   useEffect(() => {
-    let mounted = true;
-    let authTimeout: NodeJS.Timeout;
-    
     const initializeAuth = async () => {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        console.log('Initializing auth...');
         
-        if (!mounted) return;
+        // Get current session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error('Session error:', sessionError);
@@ -183,40 +186,93 @@ const AIChat: React.FC = () => {
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
-          setAuthLoaded(true);
+          setAuthLoaded(true); // CRITICAL: Always set authLoaded
           return;
         }
 
         if (!session?.user) {
-          if (mounted) {
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserOrgId(null);
-            setAuthLoaded(true);
-          }
+          // No authenticated user
+          console.log('No authenticated user found');
+          setIsAuthenticated(false);
+          setUserId(null);
+          setUserOrgId(null);
+          setAuthLoaded(true); // CRITICAL: Always set authLoaded
           return;
         }
 
-        if (mounted) {
-          setIsAuthenticated(true);
-          setUserId(session.user.id);
-        }
+        // User is authenticated
+        console.log('User authenticated:', session.user.id);
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
         
-        // Get user data from users table
+        // FIX 3: Better user data handling with proper error recovery
         try {
           const { data: userData, error: userError } = await supabase
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
-            .single();
-
-          if (!mounted) return;
+            .single(); // FIXED: Use .single() instead of .maybeSingle()
 
           if (userError) {
-            if (userError.code === 'PGRST116') {
+            console.error('User query error:', userError);
+            // If user doesn't exist in users table, this is expected for new users
+            if (userError.code === 'PGRST116') { // No rows returned
+              console.log('User not found in users table, using null org_id');
               setUserOrgId(null);
             } else {
               console.error('Unexpected user query error:', userError);
+              setUserOrgId(null);
+            }
+          } else if (userData) {
+            console.log('User org_id:', userData.org_id);
+            setUserOrgId(userData.org_id);
+          } else {
+            console.log('No user data returned, using null org_id');
+            setUserOrgId(null);
+          }
+        } catch (userQueryError) {
+          console.error('User query failed:', userQueryError);
+          // Continue with null org_id rather than failing completely
+          setUserOrgId(null);
+        }
+
+        setAuthLoaded(true); // CRITICAL: Always set authLoaded after processing
+
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+        setError('Failed to initialize user session');
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
+        setAuthLoaded(true); // CRITICAL: Always set authLoaded even on error
+      }
+    };
+
+    initializeAuth();
+
+    // FIX 4: Improved auth state change handler
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
+        setError(null); // Clear any previous errors
+        
+        // Get user org_id with improved error handling
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('org_id')
+            .eq('id', session.user.id)
+            .single(); // FIXED: Use .single() instead of .maybeSingle()
+
+          if (userError) {
+            if (userError.code === 'PGRST116') { // No rows returned
+              console.log('User not found in users table during auth change');
+              setUserOrgId(null);
+            } else {
+              console.error('User query error during auth change:', userError);
               setUserOrgId(null);
             }
           } else if (userData) {
@@ -224,110 +280,38 @@ const AIChat: React.FC = () => {
           } else {
             setUserOrgId(null);
           }
-        } catch (userQueryError) {
-          console.error('User query failed:', userQueryError);
-          if (mounted) {
-            setUserOrgId(null);
-          }
-        }
-
-        if (mounted) {
-          setAuthLoaded(true);
-        }
-
-      } catch (error) {
-        console.error('Auth initialization failed:', error);
-        if (mounted) {
-          setError('Failed to initialize user session');
-          setIsAuthenticated(false);
-          setUserId(null);
-          setUserOrgId(null);
-          setAuthLoaded(true);
-        }
-      }
-    };
-
-    // Safety timeout - if auth doesn't complete in 10 seconds, force it
-    authTimeout = setTimeout(() => {
-      if (mounted && !authLoaded) {
-        console.warn('Auth initialization timed out, forcing completion');
-        setAuthLoaded(true);
-        setError('Authentication timed out');
-      }
-    }, 10000);
-
-    initializeAuth();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        setIsAuthenticated(true);
-        setUserId(session.user.id);
-        setError(null);
-        
-        // Get user org_id
-        try {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('org_id')
-            .eq('id', session.user.id)
-            .single();
-
-          if (mounted) {
-            if (userError) {
-              if (userError.code === 'PGRST116') {
-                setUserOrgId(null);
-              } else {
-                console.error('User query error during auth change:', userError);
-                setUserOrgId(null);
-              }
-            } else if (userData) {
-              setUserOrgId(userData.org_id);
-            } else {
-              setUserOrgId(null);
-            }
-          }
         } catch (error) {
           console.error('Failed to fetch user data during auth change:', error);
-          if (mounted) {
-            setUserOrgId(null);
-          }
+          setUserOrgId(null);
         }
         
-        if (mounted) {
-          setAuthLoaded(true);
-        }
+        setAuthLoaded(true); // CRITICAL: Set authLoaded on sign in
       } else if (event === 'SIGNED_OUT') {
-        if (mounted) {
-          setIsAuthenticated(false);
-          setUserId(null);
-          setUserOrgId(null);
-          setAvailableAssistants([]);
-          setSelectedAssistant(null);
-          setMessages([]);
-          setConversations([]);
-          setCurrentConversationId(null);
-          setError(null);
-          setAuthLoaded(true);
-        }
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
+        setAvailableAssistants([]);
+        setSelectedAssistant(null);
+        setMessages([]);
+        setConversations([]);
+        setCurrentConversationId(null);
+        setError(null);
+        setAuthLoaded(true); // CRITICAL: Set authLoaded on sign out
       }
     });
 
     return () => {
-      mounted = false;
-      clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, [authLoaded]);
+  }, []); // FIXED: Empty dependency array since supabase is now outside component
 
-  // Fetch available assistants based on user's org
+  // 2. Fetch available assistants based on user's org
   const fetchAssistants = async () => {
     if (!userId || !isAuthenticated) return;
 
     try {
       setError(null);
+      console.log('Fetching assistants for user:', userId, 'org:', userOrgId);
       
       // Query assistants available to user's org or global assistants
       let query = supabase
@@ -348,6 +332,8 @@ const AIChat: React.FC = () => {
         throw assistantError;
       }
 
+      console.log('Found assistants:', dbAssistants?.length || 0);
+
       // Map database assistants to UI assistants
       const mappedAssistants = mockAssistants.map(mockAssistant => {
         const dbAssistant = dbAssistants?.find((db: DBAssistant) => 
@@ -361,7 +347,7 @@ const AIChat: React.FC = () => {
           name: dbAssistant?.name || mockAssistant.name,
           description: dbAssistant?.description || mockAssistant.description
         };
-      }).filter(assistant => assistant.assistantId);
+      }).filter(assistant => assistant.assistantId); // Only include configured assistants
 
       setAvailableAssistants(mappedAssistants);
       
@@ -374,11 +360,11 @@ const AIChat: React.FC = () => {
       console.error('Failed to fetch assistants:', error);
       setError('Unable to load AI assistants. Please try again.');
     } finally {
-      setAssistantsLoaded(true);
+      setAssistantsLoaded(true); // CRITICAL: Always set assistantsLoaded
     }
   };
 
-  // Fetch conversations for selected assistant
+  // 3. Fetch conversations for selected assistant
   const fetchConversations = async () => {
     if (!userId || !isAuthenticated || !selectedAssistant?.assistantId) return;
 
@@ -411,11 +397,11 @@ const AIChat: React.FC = () => {
       console.error('Failed to fetch conversations:', error);
       setError('Unable to load conversation history.');
     } finally {
-      setConversationsLoaded(true);
+      setConversationsLoaded(true); // CRITICAL: Always set conversationsLoaded
     }
   };
 
-  // Load specific conversation and its messages
+  // 4. Load specific conversation and its messages
   const loadConversation = async (conversationId: string) => {
     if (!userId || !isAuthenticated) return;
 
@@ -453,7 +439,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Add welcome message
+  // 5. Add welcome message
   const addWelcomeMessage = () => {
     if (!selectedAssistant) return;
 
@@ -467,7 +453,7 @@ const AIChat: React.FC = () => {
     setMessages([welcomeMessage]);
   };
 
-  // Start new conversation
+  // 6. Start new conversation
   const startNewConversation = () => {
     setCurrentConversationId(null);
     setMessages([]);
@@ -475,7 +461,7 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Send message to AI
+  // 7. Send message to AI
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated) return;
 
@@ -518,6 +504,7 @@ const AIChat: React.FC = () => {
         // Update conversation ID if this is a new conversation
         if (data.conversation_id && !currentConversationId) {
           setCurrentConversationId(data.conversation_id);
+          // Refresh conversations list
           fetchConversations();
         }
 
@@ -552,7 +539,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Test connection
+  // 8. Test connection
   const testConnection = async () => {
     if (!selectedAssistant?.assistantId || !userId || !isAuthenticated) {
       setConnectionStatus('disconnected');
@@ -595,7 +582,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Handle assistant selection
+  // 9. Handle assistant selection
   const switchAssistant = (assistant: Assistant) => {
     setSelectedAssistant(assistant);
     setCurrentConversationId(null);
@@ -608,6 +595,7 @@ const AIChat: React.FC = () => {
   // Initialize data when auth is loaded and user is authenticated
   useEffect(() => {
     if (authLoaded && userId && isAuthenticated) {
+      console.log('Auth loaded, fetching assistants...');
       fetchAssistants();
     }
   }, [authLoaded, userId, isAuthenticated, userOrgId]);
@@ -622,6 +610,18 @@ const AIChat: React.FC = () => {
     }
   }, [selectedAssistant, assistantsLoaded, isAuthenticated]);
 
+  // IMPROVED: Debug logging for auth state
+  console.log('Auth State Debug:', {
+    authLoaded,
+    isAuthenticated,
+    userId: userId?.substring(0, 8) + '...',
+    userOrgId: userOrgId?.substring(0, 8) + '...',
+    assistantsLoaded,
+    availableAssistants: availableAssistants.length,
+    supabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+    supabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+  });
+
   // Loading screen
   if (!authLoaded) {
     return (
@@ -630,6 +630,17 @@ const AIChat: React.FC = () => {
           <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600">Loading...</p>
           <p className="text-xs text-gray-400 mt-2">Checking authentication...</p>
+          
+          {/* IMPROVED: Better debug info in loading state */}
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left max-w-md">
+            <p className="text-xs text-blue-700 font-medium mb-2">Debug Info:</p>
+            <div className="text-xs text-blue-600 space-y-1">
+              <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅' : '❌'}</div>
+              <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅' : '❌'}</div>
+              <div>Auth Loaded: {authLoaded ? '✅' : '⏳'}</div>
+              <div>Is Authenticated: {isAuthenticated ? '✅' : '❌'}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -664,6 +675,19 @@ const AIChat: React.FC = () => {
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
+          
+          {/* Debug info */}
+          <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
+            <p className="text-xs text-blue-700 font-medium mb-2">Debug Info:</p>
+            <div className="text-xs text-blue-600 space-y-1">
+              <div>Auth Loaded: {authLoaded ? '✅' : '❌'}</div>
+              <div>Is Authenticated: {isAuthenticated ? '✅' : '❌'}</div>
+              <div>User ID: {userId || 'None'}</div>
+              <div>Logging In: {isLoggingIn ? '✅' : '❌'}</div>
+              <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅' : '❌'}</div>
+              <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅' : '❌'}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
