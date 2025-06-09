@@ -173,14 +173,22 @@ const AIChat: React.FC = () => {
     
     const initializeAuth = async () => {
       try {
+        console.log('🔐 Starting auth initialization...');
+        
+        // Check if environment variables are available
+        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+          throw new Error('Missing Supabase environment variables');
+        }
+        
+        console.log('🔐 Getting session...');
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (!mounted) return;
         
         if (sessionError) {
-          console.error('Session error:', sessionError);
+          console.error('❌ Session error:', sessionError);
           if (mounted) {
-            setError('Failed to get user session');
+            setError(`Failed to get user session: ${sessionError.message}`);
             setIsAuthenticated(false);
             setUserId(null);
             setUserOrgId(null);
@@ -189,8 +197,11 @@ const AIChat: React.FC = () => {
           return;
         }
 
+        console.log('🔐 Session result:', session ? '✅ Found session' : '❌ No session');
+        
         if (!session?.user) {
           if (mounted) {
+            console.log('🔐 No authenticated user - showing login screen');
             setIsAuthenticated(false);
             setUserId(null);
             setUserOrgId(null);
@@ -199,6 +210,8 @@ const AIChat: React.FC = () => {
           return;
         }
 
+        console.log('🔐 User authenticated:', session.user.id);
+        
         if (mounted) {
           setIsAuthenticated(true);
           setUserId(session.user.id);
@@ -208,6 +221,7 @@ const AIChat: React.FC = () => {
         
         // Get user data from users table (optional, don't block on this)
         try {
+          console.log('👤 Fetching user org data...');
           const { data: userData, error: userError } = await supabase
             .from('users')
             .select('org_id')
@@ -215,16 +229,19 @@ const AIChat: React.FC = () => {
             .single();
 
           if (mounted && userData?.org_id) {
+            console.log('👤 User org_id found:', userData.org_id);
             setUserOrgId(userData.org_id);
+          } else {
+            console.log('👤 No org_id or user not found in users table');
           }
         } catch (userQueryError) {
-          console.error('User query failed (continuing anyway):', userQueryError);
+          console.error('👤 User query failed (continuing anyway):', userQueryError);
         }
 
       } catch (error) {
-        console.error('Auth initialization failed:', error);
+        console.error('❌ Auth initialization failed:', error);
         if (mounted) {
-          setError('Failed to initialize user session');
+          setError(`Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`);
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
@@ -233,20 +250,22 @@ const AIChat: React.FC = () => {
       }
     };
 
-    // Safety timeout - force completion after 5 seconds
+    // Safety timeout - force completion after 3 seconds (reduced from 5)
     authTimeout = setTimeout(() => {
       if (mounted) {
-        console.warn('Auth initialization timed out, forcing completion');
+        console.warn('⏰ Auth initialization timed out, forcing completion');
         setAuthLoaded(true);
-        setError('Authentication timed out - please refresh');
+        setError('Authentication timed out - please try refreshing the page');
       }
-    }, 5000);
+    }, 3000);
 
     initializeAuth();
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      
+      console.log('🔐 Auth state changed:', event, session?.user?.id);
       
       if (event === 'SIGNED_IN' && session?.user) {
         setIsAuthenticated(true);
@@ -266,7 +285,7 @@ const AIChat: React.FC = () => {
             setUserOrgId(userData.org_id);
           }
         } catch (error) {
-          // Ignore errors, continue with null org_id
+          console.log('User org lookup failed, continuing with null org_id');
         }
         
       } else if (event === 'SIGNED_OUT') {
