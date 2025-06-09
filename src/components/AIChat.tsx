@@ -66,8 +66,8 @@ const AIChat: React.FC = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock user ID - in production, get from auth
-  const userId = 'mock-user-id';
+  // Valid UUID for testing - in production, get from auth
+  const userId = '39ce1d87-e47c-455c-951a-644a849b2a11';
 
   // Initialize with welcome message
   React.useEffect(() => {
@@ -88,7 +88,7 @@ const AIChat: React.FC = () => {
     try {
       setConnectionStatus('testing');
       
-      // Test with a simple message
+      // Test with a simple message using valid UUID
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
@@ -96,7 +96,7 @@ const AIChat: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: 'test-user',
+          userId: '39ce1d87-e47c-455c-951a-644a849b2a11',
           message: 'Hello',
           assistantRole: selectedAssistant.role
         })
