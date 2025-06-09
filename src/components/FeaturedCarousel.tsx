@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Eye, Gift, Heart, DollarSign, Star, Flame } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Gift, Heart, DollarSign, Star, Flame, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PlanPreviewModal from './PlanPreviewModal';
 
@@ -19,9 +19,10 @@ interface FeaturedDevotional {
 interface FeaturedCarouselProps {
   onPreview?: (devotional: FeaturedDevotional) => void;
   onPlanStarted?: () => void;
+  onExploreMore?: () => void;
 }
 
-const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ onPreview, onPlanStarted }) => {
+const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ onPreview, onPlanStarted, onExploreMore }) => {
   const [featuredDevotionals, setFeaturedDevotionals] = useState<FeaturedDevotional[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -332,6 +333,20 @@ const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ onPreview, onPlanSt
             Next
             <ChevronRight className="w-4 h-4 ml-1" />
           </button>
+        </div>
+
+        {/* Explore More Button */}
+        <div className="mt-8 text-center">
+          <button
+            onClick={onExploreMore}
+            className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl font-bold text-lg"
+          >
+            <BookOpen className="w-6 h-6 mr-3" />
+            📚 Explore More Devotionals
+          </button>
+          <p className="text-center text-sm text-gray-500 mt-3">
+            Browse our full marketplace with 50+ devotional plans
+          </p>
         </div>
       </div>
 

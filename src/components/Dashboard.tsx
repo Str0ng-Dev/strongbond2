@@ -364,7 +364,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                 : 'max-h-[1000px] opacity-100'
             }`}>
               <div className="p-6">
-                <FeaturedCarousel onPlanStarted={handleFeaturedPlanStarted} />
+                <FeaturedCarousel 
+                  onPlanStarted={handleFeaturedPlanStarted}
+                  onExploreMore={handleNavigateToDevotionals}
+                />
               </div>
             </div>
           </div>
