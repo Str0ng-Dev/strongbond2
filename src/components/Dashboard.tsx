@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, BookOpen, Users as UsersIcon, Heart, Sparkles, ChevronDown, ChevronUp, Bot } from 'lucide-react';
+import { LogOut, BookOpen, Users as UsersIcon, Heart, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { OnboardingData, User } from '../types';
+import DevotionalMarketplace from './dashboard/DevotionalMarketplace';
 import CurrentPlan from './dashboard/CurrentPlan';
 import TodaysExperience from './dashboard/TodaysExperience';
 import Connections from './dashboard/Connections';
 import DevotionalsPage from './DevotionalsPage';
 import UserLinking from './UserLinking';
 import FeaturedCarousel from './FeaturedCarousel';
-import AIChat from './AIChat';
 import { supabase } from '../lib/supabase';
 
 interface DashboardProps {
@@ -19,8 +19,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'devotionals' | 'user-connections' | 'ai-chat'>('dashboard');
-  const [isFeaturedCollapsed, setIsFeaturedCollapsed] = useState(true);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'devotionals' | 'user-connections'>('dashboard');
+  const [isFeaturedCollapsed, setIsFeaturedCollapsed] = useState(true); // Changed to true
 
   useEffect(() => {
     loadUserData();
@@ -77,10 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
 
   const handleNavigateToUserConnections = () => {
     setCurrentView('user-connections');
-  };
-
-  const handleNavigateToAIChat = () => {
-    setCurrentView('ai-chat');
   };
 
   const handleBackToDashboard = () => {
@@ -217,36 +213,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     );
   }
 
-  // Show AI Chat page
-  if (currentView === 'ai-chat') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">AI Spiritual Companions</h1>
-                <p className="text-gray-600">Chat with your AI family members for guidance and support</p>
-              </div>
-              <button
-                onClick={handleBackToDashboard}
-                className="flex items-center px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200"
-              >
-                Back to Dashboard
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* AI Chat Component */}
-        <div className="h-[calc(100vh-120px)]">
-          <AIChat />
-        </div>
-      </div>
-    );
-  }
-
   // Show User Connections page
   if (currentView === 'user-connections' && currentUser) {
     return (
@@ -315,16 +281,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
 
             {/* Navigation & Logout */}
             <div className="flex items-center space-x-3">
-              {/* AI Chat Button */}
-              <button
-                onClick={handleNavigateToAIChat}
-                className="flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30 rounded-lg transition-all duration-200 group"
-                title="AI Spiritual Companions"
-              >
-                <Bot className="w-4 h-4 mr-2" />
-                <span className="font-medium">AI Chat</span>
-              </button>
-
               {/* Devotionals Button */}
               <button
                 onClick={handleNavigateToDevotionals}
@@ -417,10 +373,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        {/* Main Dashboard Content - Simplified Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Connections Only */}
-          <div className="lg:col-span-1">
+          {/* Left Column - Quick Start & Connections */}
+          <div className="lg:col-span-1 space-y-8">
+            <DevotionalMarketplace onPlanStarted={handlePlanUpdate} />
             <Connections 
               currentUser={currentUser} 
               onUpdate={handleGroupUpdate}
