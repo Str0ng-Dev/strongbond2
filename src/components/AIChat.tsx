@@ -496,12 +496,11 @@ const AIChat: React.FC = () => {
     try {
       console.log('💬 Sending message to AI...');
       
-      // ✅ Fixed field names to match edge function expectations
-     const requestBody = {
-  userId: userId,           // ❌ Change to: userId: userId,
+const requestBody = {
+  userId: userId,            // ✅ FIXED - removed underscore
   message: messageText,      
   assistantRole: selectedAssistant.role,  
-  conversation_id: currentConversationId  // ❌ Change to: conversationId: currentConversationId
+  conversationId: currentConversationId   // ✅ FIXED - removed underscore
 };
 
       console.log('📤 Request body:', requestBody);
@@ -579,10 +578,10 @@ const AIChat: React.FC = () => {
       setConnectionStatus('testing');
       
       // ✅ Fixed field names to match edge function expectations
-      const testBody = {
-  user_id: userId,           // ❌ Change to: userId: userId,
+const testBody = {
+  userId: userId,            // ✅ FIXED - removed underscore
   message: 'Hello',          
-  assistantRole: selectedAssistant.role  
+  assistantRole: selectedAssistant.role
 };
 
       console.log('🧪 Test body:', testBody);
