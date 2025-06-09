@@ -169,6 +169,7 @@ const AIChat: React.FC = () => {
   // Initialize authentication and user data
   useEffect(() => {
     let mounted = true;
+    let authTimeout: NodeJS.Timeout;
     
     const initializeAuth = async () => {
       try {
@@ -246,6 +247,15 @@ const AIChat: React.FC = () => {
       }
     };
 
+    // Safety timeout - if auth doesn't complete in 10 seconds, force it
+    authTimeout = setTimeout(() => {
+      if (mounted && !authLoaded) {
+        console.warn('Auth initialization timed out, forcing completion');
+        setAuthLoaded(true);
+        setError('Authentication timed out');
+      }
+    }, 10000);
+
     initializeAuth();
 
     // Listen for auth state changes
@@ -307,9 +317,10 @@ const AIChat: React.FC = () => {
 
     return () => {
       mounted = false;
+      clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [authLoaded]);
 
   // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
