@@ -598,6 +598,16 @@ const AIChat: React.FC = () => {
     }
   }, [selectedAssistant, assistantsLoaded, isAuthenticated]);
 
+  // Debug logging for auth state
+  console.log('Auth State Debug:', {
+    authLoaded,
+    isAuthenticated,
+    userId: userId?.substring(0, 8) + '...',
+    userOrgId: userOrgId?.substring(0, 8) + '...',
+    assistantsLoaded,
+    availableAssistants: availableAssistants.length
+  });
+
   // Loading screen
   if (!authLoaded) {
     return (
@@ -605,12 +615,13 @@ const AIChat: React.FC = () => {
         <div className="text-center">
           <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600">Loading...</p>
+          <p className="text-xs text-gray-400 mt-2">Checking authentication...</p>
         </div>
       </div>
     );
   }
 
-  // Not authenticated
+  // Not authenticated - Show sign in screen
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -639,6 +650,19 @@ const AIChat: React.FC = () => {
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
+          
+          {/* Debug info */}
+          <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
+            <p className="text-xs text-blue-700 font-medium mb-2">Debug Info:</p>
+            <div className="text-xs text-blue-600 space-y-1">
+              <div>Auth Loaded: {authLoaded ? '✅' : '❌'}</div>
+              <div>Is Authenticated: {isAuthenticated ? '✅' : '❌'}</div>
+              <div>User ID: {userId || 'None'}</div>
+              <div>Logging In: {isLoggingIn ? '✅' : '❌'}</div>
+              <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅' : '❌'}</div>
+              <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅' : '❌'}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
