@@ -497,12 +497,12 @@ const AIChat: React.FC = () => {
       console.log('💬 Sending message to AI...');
       
       // ✅ Fixed field names to match edge function expectations
-      const requestBody = {
-        user_id: userId,           // ✅ Correct field name
-        message: messageText,      // ✅ Correct field name
-        assistantRole: selectedAssistant.role,  // ✅ use .role instead of.assistantId
-        conversation_id: currentConversationId        // ✅ Correct field name
-      };
+     const requestBody = {
+  user_id: userId,           // ❌ Change to: userId: userId,
+  message: messageText,      
+  assistantRole: selectedAssistant.role,  
+  conversation_id: currentConversationId  // ❌ Change to: conversationId: currentConversationId
+};
 
       console.log('📤 Request body:', requestBody);
       
@@ -580,10 +580,10 @@ const AIChat: React.FC = () => {
       
       // ✅ Fixed field names to match edge function expectations
       const testBody = {
-        user_id: userId,           // ✅ Correct field name
-        message: 'Hello',          // ✅ Correct field name
-assistantRole: selectedAssistant.role  // ✅ use .role instead of .assistantId
-  };
+  user_id: userId,           // ❌ Change to: userId: userId,
+  message: 'Hello',          
+  assistantRole: selectedAssistant.role  
+};
 
       console.log('🧪 Test body:', testBody);
       
