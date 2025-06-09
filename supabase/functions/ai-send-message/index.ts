@@ -15,12 +15,6 @@ interface SendMessageRequest {
   assistantRole?: string;
 }
 
-interface ConversationContext {
-  devotional_context?: any;
-  include_journal_history?: boolean;
-  include_fitness_progress?: boolean;
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -28,15 +22,34 @@ serve(async (req) => {
   }
 
   try {
-    // Initialize clients
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    // Check for required environment variables
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-    const openai = new OpenAI({
-      apiKey: Deno.env.get('OPENAI_API_KEY') ?? '',
-    })
+    if (!openaiApiKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'OpenAI API key not configured',
+          details: 'Please set the OPENAI_API_KEY environment variable in your Supabase project settings'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Supabase configuration missing',
+          details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Initialize clients
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
+    const openai = new OpenAI({ apiKey: openaiApiKey })
 
     // Parse request
     const { conversationId, userId, message, assistantRole }: SendMessageRequest = await req.json()
@@ -49,16 +62,18 @@ serve(async (req) => {
     }
 
     // Step 1: Get user's preferred assistant or use provided role
-    let targetAssistantRole = assistantRole;
-    
-    if (!targetAssistantRole) {
+    let targetAssistantRole = assistantRole || 'Coach' // Default fallback
+
+    if (!assistantRole) {
       const { data: userPrefs } = await supabaseClient
         .from('user_ai_preferences')
         .select('preferred_assistant_role')
         .eq('user_id', userId)
         .single()
       
-      targetAssistantRole = userPrefs?.preferred_assistant_role || 'Coach' // Default fallback
+      if (userPrefs?.preferred_assistant_role) {
+        targetAssistantRole = userPrefs.preferred_assistant_role
+      }
     }
 
     // Step 2: Get assistant details from ai_assistants table
@@ -69,19 +84,130 @@ serve(async (req) => {
       .eq('is_active', true)
       .single()
 
-    if (assistantError || !assistant) {
-      return new Response(
-        JSON.stringify({ error: `No active assistant found for role: ${targetAssistantRole}` }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    // If no custom assistant found, create a simple response using chat completions
+    if (assistantError || !assistant || !assistant.openai_assistant_id) {
+      console.log(`No assistant found for role ${targetAssistantRole}, using chat completion fallback`)
+      
+      // Create a simple personality prompt based on role
+      const rolePrompts = {
+        'Dad': 'You are a wise, caring father figure and spiritual mentor. Provide guidance with warmth, wisdom, and biblical insight.',
+        'Mom': 'You are a nurturing, loving mother figure. Offer comfort, encouragement, and gentle spiritual guidance.',
+        'Coach': 'You are an enthusiastic, motivational coach. Encourage spiritual and physical growth with energy and positivity.',
+        'Son': 'You are a supportive peer and friend. Share insights with humility and relatability.',
+        'Daughter': 'You are a caring, insightful companion. Offer support with empathy and understanding.',
+        'Single Man': 'You are a thoughtful single man sharing your spiritual journey. Provide honest, relatable guidance.',
+        'Single Woman': 'You are a wise single woman offering spiritual insights. Share with authenticity and grace.',
+        'Church Leader': 'You are a pastoral leader offering biblical wisdom and spiritual guidance with authority and care.'
+      }
+
+      const systemPrompt = rolePrompts[targetAssistantRole as keyof typeof rolePrompts] || rolePrompts['Coach']
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+
+        const responseText = completion.choices[0]?.message?.content || 'I apologize, but I encountered an issue generating a response.'
+
+        // Handle conversation storage (simplified for fallback)
+        let conversation;
+        if (conversationId) {
+          const { data: existingConv } = await supabaseClient
+            .from('ai_conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .eq('user_id', userId)
+            .single()
+          conversation = existingConv
+        }
+
+        if (!conversation) {
+          // Create new conversation with a mock assistant ID
+          const { data: newConv, error: convError } = await supabaseClient
+            .from('ai_conversations')
+            .insert({
+              user_id: userId,
+              assistant_id: '00000000-0000-0000-0000-000000000000', // Placeholder UUID
+              title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+              last_message_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+
+          if (!convError) {
+            conversation = newConv
+          }
+        }
+
+        // Store messages if conversation exists
+        if (conversation) {
+          const messagesToInsert = [
+            {
+              conversation_id: conversation.id,
+              sender_type: 'user',
+              content: message,
+              created_at: new Date().toISOString()
+            },
+            {
+              conversation_id: conversation.id,
+              sender_type: 'assistant',
+              content: responseText,
+              metadata: {
+                model: 'gpt-4-turbo-preview',
+                fallback_mode: true,
+                assistant_role: targetAssistantRole
+              },
+              created_at: new Date().toISOString()
+            }
+          ]
+
+          await supabaseClient
+            .from('ai_messages')
+            .insert(messagesToInsert)
+
+          await supabaseClient
+            .from('ai_conversations')
+            .update({ last_message_at: new Date().toISOString() })
+            .eq('id', conversation.id)
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: responseText,
+            conversationId: conversation?.id,
+            assistantRole: targetAssistantRole,
+            mode: 'fallback'
+          }),
+          { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+
+      } catch (openaiError) {
+        console.error('OpenAI API error:', openaiError)
+        return new Response(
+          JSON.stringify({ 
+            error: 'OpenAI API error',
+            details: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error'
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
-    // Step 3: Handle conversation and thread management
+    // Original assistant-based flow (if assistant exists and has openai_assistant_id)
     let conversation;
     let threadId;
 
     if (conversationId) {
-      // Fetch existing conversation
       const { data: existingConv } = await supabaseClient
         .from('ai_conversations')
         .select('*')
@@ -101,13 +227,11 @@ serve(async (req) => {
       threadId = thread.id
 
       if (conversation) {
-        // Update existing conversation with thread_id
         await supabaseClient
           .from('ai_conversations')
           .update({ thread_id: threadId })
           .eq('id', conversation.id)
       } else {
-        // Create new conversation
         const { data: newConv, error: convError } = await supabaseClient
           .from('ai_conversations')
           .insert({
@@ -127,31 +251,34 @@ serve(async (req) => {
       }
     }
 
-    // Step 4: Add user message to thread
+    // Add user message to thread
     await openai.beta.threads.messages.create(threadId, {
       role: 'user',
       content: message
     })
 
-    // Step 5: Create and run assistant
+    // Create and run assistant
     const run = await openai.beta.threads.runs.create(threadId, {
-      assistant_id: assistant.openai_assistant_id || 'asst_default', // Fallback if no assistant_id
+      assistant_id: assistant.openai_assistant_id,
       instructions: assistant.personality_prompt
     })
 
-    // Step 6: Poll for completion
+    // Poll for completion
     let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id)
+    let attempts = 0
+    const maxAttempts = 30 // 30 seconds timeout
     
-    while (runStatus.status === 'queued' || runStatus.status === 'in_progress') {
+    while ((runStatus.status === 'queued' || runStatus.status === 'in_progress') && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id)
+      attempts++
     }
 
     if (runStatus.status !== 'completed') {
       throw new Error(`Assistant run failed with status: ${runStatus.status}`)
     }
 
-    // Step 7: Get assistant response
+    // Get assistant response
     const messages = await openai.beta.threads.messages.list(threadId, {
       order: 'desc',
       limit: 1
@@ -169,7 +296,7 @@ serve(async (req) => {
       responseText = assistantContent.text.value
     }
 
-    // Step 8: Store messages in database
+    // Store messages in database
     const messagesToInsert = [
       {
         conversation_id: conversation.id,
@@ -198,19 +325,19 @@ serve(async (req) => {
       console.error('Failed to store messages:', messageError)
     }
 
-    // Step 9: Update conversation timestamp
+    // Update conversation timestamp
     await supabaseClient
       .from('ai_conversations')
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', conversation.id)
 
-    // Return response
     return new Response(
       JSON.stringify({
         success: true,
         message: responseText,
         conversationId: conversation.id,
-        assistantRole: targetAssistantRole
+        assistantRole: targetAssistantRole,
+        mode: 'assistant'
       }),
       { 
         status: 200, 
