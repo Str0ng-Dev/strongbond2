@@ -388,7 +388,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             <TodaysExperience key={refreshKey} userData={userData} />
           </div>
         </div>
-    
+        </div> {/* End max-w-7xl wrapper */}
+      </div> {/* End full-page gradient wrapper */}
+    </div> {/* End main dashboard container */}
   );
 };
 
