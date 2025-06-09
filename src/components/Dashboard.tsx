@@ -372,19 +372,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        {/* Main Dashboard Grid - Now using 2 columns instead of 3 */}
+        {/* Main Dashboard Grid - 2 columns with Current Plan moved to left */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column - Connections (now wider) */}
+          {/* Left Column - Current Plan & Connections */}
           <div className="space-y-8">
+            <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
             <Connections 
               currentUser={currentUser} 
               onUpdate={handleGroupUpdate}
             />
           </div>
 
-          {/* Right Column - Current Plan & Today's Experience */}
+          {/* Right Column - Today's Experience (full height) */}
           <div className="space-y-8">
-            <CurrentPlan key={refreshKey} onPlanChange={handlePlanUpdate} />
             <TodaysExperience key={refreshKey} userData={userData} />
           </div>
         </div>
