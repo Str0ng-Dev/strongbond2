@@ -41,6 +41,49 @@ const DevotionalMarketplace: React.FC<DevotionalMarketplaceProps> = ({ onPlanSta
     }
   };
 
+  // Helper function to ensure only one plan is active
+  const ensureSingleActivePlan = async (userId: string) => {
+    try {
+      // Get all active plans for this user
+      const { data: activePlans, error: activeError } = await supabase
+        .from('user_devotional_plan')
+        .select('id, updated_at')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false });
+
+      if (activeError) {
+        console.error('Error checking active plans:', activeError);
+        return;
+      }
+
+      // If there are multiple active plans, keep only the most recently updated one
+      if (activePlans && activePlans.length > 1) {
+        console.log(`Found ${activePlans.length} active plans, fixing...`);
+        
+        const mostRecentPlan = activePlans[0];
+        const plansToDeactivate = activePlans.slice(1).map(plan => plan.id);
+
+        // Deactivate all but the most recent plan
+        const { error: deactivateError } = await supabase
+          .from('user_devotional_plan')
+          .update({ 
+            is_active: false,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', plansToDeactivate);
+
+        if (deactivateError) {
+          console.error('Error deactivating duplicate plans:', deactivateError);
+        } else {
+          console.log(`Deactivated ${plansToDeactivate.length} duplicate active plans`);
+        }
+      }
+    } catch (err) {
+      console.error('Error ensuring single active plan:', err);
+    }
+  };
+
   const handleStartPlan = async (planId: string) => {
     const userData = localStorage.getItem('onboarding_data');
     if (!userData) {
@@ -61,7 +104,10 @@ const DevotionalMarketplace: React.FC<DevotionalMarketplaceProps> = ({ onPlanSta
     setError(null);
 
     try {
-      // Step 1: Archive current active plan (set is_active = false)
+      // Step 1: Ensure data consistency first
+      await ensureSingleActivePlan(user_id);
+
+      // Step 2: Archive current active plan (set is_active = false)
       const { error: archiveError } = await supabase
         .from('user_devotional_plan')
         .update({ 
@@ -75,7 +121,7 @@ const DevotionalMarketplace: React.FC<DevotionalMarketplaceProps> = ({ onPlanSta
         throw new Error(`Failed to archive current plan: ${archiveError.message}`);
       }
 
-      // Step 2: Check if a record already exists for this user and devotional
+      // Step 3: Check if a record already exists for this user and devotional
       const { data: existingPlan, error: checkError } = await supabase
         .from('user_devotional_plan')
         .select('id')
@@ -88,7 +134,7 @@ const DevotionalMarketplace: React.FC<DevotionalMarketplaceProps> = ({ onPlanSta
       }
 
       if (existingPlan) {
-        // Step 3a: Update existing record
+        // Step 4a: Update existing record
         const { error: updateError } = await supabase
           .from('user_devotional_plan')
           .update({
@@ -104,7 +150,7 @@ const DevotionalMarketplace: React.FC<DevotionalMarketplaceProps> = ({ onPlanSta
           throw new Error(`Failed to restart plan: ${updateError.message}`);
         }
       } else {
-        // Step 3b: Insert new record
+        // Step 4b: Insert new record
         const { error: insertError } = await supabase
           .from('user_devotional_plan')
           .insert({
