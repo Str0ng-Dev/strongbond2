@@ -196,20 +196,7 @@ const AIChat: React.FC = () => {
           throw new Error('Missing Supabase environment variables');
         }
         
-        // Don't wait for getSession() - it seems to hang
-        // Instead, rely on the auth state change listener
         console.log('🔐 Setting up auth listener...');
-        
-        // Set a shorter fallback timeout in case auth state never fires
-        setTimeout(() => {
-          if (mounted && !authLoaded) {
-            console.log('🔐 No auth state received, defaulting to logged out');
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserOrgId(null);
-            setAuthLoaded(true);
-          }
-        }, 1000);
 
       } catch (error) {
         console.error('❌ Auth initialization failed:', error);
@@ -223,16 +210,16 @@ const AIChat: React.FC = () => {
       }
     };
 
-    // Safety timeout - force completion after 2 seconds
+    // Safety timeout - force completion after 3 seconds if no auth state change occurs
     authTimeout = setTimeout(() => {
-      if (mounted && !authLoaded) {
+      if (mounted) {
         console.warn('⏰ Auth initialization timed out, forcing completion');
         setIsAuthenticated(false);
         setUserId(null);
         setUserOrgId(null);
         setAuthLoaded(true);
       }
-    }, 2000);
+    }, 3000);
 
     initializeAuth();
 
@@ -250,7 +237,6 @@ const AIChat: React.FC = () => {
         setIsAuthenticated(true);
         setUserId(session.user.id);
         setError(null);
-        setAuthLoaded(true);
         
         // Get user org_id (optional)
         try {
@@ -266,10 +252,15 @@ const AIChat: React.FC = () => {
             setUserOrgId(userData.org_id);
           } else {
             console.log('👤 No org_id found');
+            setUserOrgId(null);
           }
         } catch (error) {
           console.log('👤 User org lookup failed, continuing with null org_id');
+          setUserOrgId(null);
         }
+        
+        // Set auth loaded AFTER all other state updates
+        setAuthLoaded(true);
         
       } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || !session) {
         console.log('🔐 User signed out or no session');
@@ -283,6 +274,8 @@ const AIChat: React.FC = () => {
           setConversations([]);
           setCurrentConversationId(null);
           setError(null);
+          
+          // Set auth loaded AFTER all other state updates
           setAuthLoaded(true);
         }
       }
@@ -293,7 +286,7 @@ const AIChat: React.FC = () => {
       clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
-  }, []); // FIXED: Empty dependency array
+  }, []); // Empty dependency array - this effect should only run once
 
   // Fetch available assistants based on user's org
   const fetchAssistants = async () => {
