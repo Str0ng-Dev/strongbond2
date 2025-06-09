@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
 import { UserRole } from '../types/ai';
-import { createClient } from '@supabase/supabase-js';
-
-// Create Supabase client
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase'; // Import singleton client
 
 interface Message {
   id: string;
@@ -136,7 +130,7 @@ const AIChat: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [userOrgId, setUserOrgId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [session, setSession] = useState<any>(null); // Add session state
+  const [session, setSession] = useState<any>(null);
   
   // Loading states
   const [assistantsLoaded, setAssistantsLoaded] = useState(false);
@@ -227,7 +221,7 @@ const AIChat: React.FC = () => {
       console.log('🔐 Auth state changed:', event, session?.user?.id);
       
       clearTimeout(authTimeout);
-      setSession(session); // Store the session
+      setSession(session);
       
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('🔐 User signed in:', session.user.id);
@@ -324,8 +318,6 @@ const AIChat: React.FC = () => {
       
       // Additional filtering based on user role if available
       if (userRole) {
-        // For now, show all available assistants regardless of user role
-        // TODO: Implement role-based filtering if needed
         console.log('🤖 Showing all assistants for user role:', userRole);
       }
 
@@ -484,7 +476,7 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Send message to AI
+  // Send message to AI - FIXED FIELD NAMES
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) return;
 
@@ -504,18 +496,23 @@ const AIChat: React.FC = () => {
     try {
       console.log('💬 Sending message to AI...');
       
+      // ✅ Fixed field names to match edge function expectations
+      const requestBody = {
+        user_id: userId,           // ✅ Correct field name
+        message: messageText,      // ✅ Correct field name
+        assistant_id: selectedAssistant.assistantId,  // ✅ Correct field name
+        conversation_id: currentConversationId        // ✅ Correct field name
+      };
+
+      console.log('📤 Request body:', requestBody);
+      
       const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`, // ✅ Use session token instead of anon key
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_id: userId,
-          message: messageText,
-          assistant_id: selectedAssistant.assistantId,
-          conversation_id: currentConversationId
-        })
+        body: JSON.stringify(requestBody)
       });
       
       const timeoutPromise = new Promise((_, reject) => 
@@ -526,7 +523,7 @@ const AIChat: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -569,7 +566,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Test connection
+  // Test connection - FIXED FIELD NAMES
   const testConnection = async () => {
     if (!selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) {
       setConnectionStatus('disconnected');
@@ -581,17 +578,22 @@ const AIChat: React.FC = () => {
       console.log('🔗 Testing AI connection...');
       setConnectionStatus('testing');
       
+      // ✅ Fixed field names to match edge function expectations
+      const testBody = {
+        user_id: userId,           // ✅ Correct field name
+        message: 'Hello',          // ✅ Correct field name
+        assistant_id: selectedAssistant.assistantId  // ✅ Correct field name
+      };
+
+      console.log('🧪 Test body:', testBody);
+      
       const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`, // ✅ Use session token instead of anon key
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_id: userId,
-          message: 'Hello',
-          assistant_id: selectedAssistant.assistantId
-        })
+        body: JSON.stringify(testBody)
       });
       
       const timeoutPromise = new Promise((_, reject) => 
@@ -607,11 +609,11 @@ const AIChat: React.FC = () => {
           setConnectionStatus('connected');
           setError(null);
         } else {
-          throw new Error(data.error || 'Unknown error');
+          throw new Error(data.details || data.error || 'Unknown error');
         }
       } else {
         const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}`);
       }
     } catch (error) {
       console.error('Connection test failed:', error);
