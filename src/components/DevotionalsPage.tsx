@@ -259,10 +259,9 @@ const DevotionalsPage: React.FC<DevotionalsPageProps> = ({ onBack, onPlanStarted
         .select('id')
         .eq('user_id', user_id)
         .eq('devotional_id', planId)
-        .single();
+        .maybeSingle();
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        // PGRST116 is "not found" error, which is expected if no record exists
+      if (checkError) {
         throw new Error(`Failed to check existing plan: ${checkError.message}`);
       }
 
