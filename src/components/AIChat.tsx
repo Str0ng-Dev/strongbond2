@@ -476,7 +476,7 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Send message to AI - FIXED FIELD NAMES
+  // Send message to AI - FIXED URL PATH
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) return;
 
@@ -506,7 +506,7 @@ const AIChat: React.FC = () => {
 
       console.log('📤 Request body:', requestBody);
       
-      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -566,7 +566,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // Test connection - FIXED FIELD NAMES
+  // Test connection - FIXED URL PATH
   const testConnection = async () => {
     if (!selectedAssistant?.assistantId || !userId || !isAuthenticated || !session) {
       setConnectionStatus('disconnected');
@@ -587,7 +587,7 @@ const AIChat: React.FC = () => {
 
       console.log('🧪 Test body:', testBody);
       
-      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+      const requestPromise = fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-sendMessage`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
