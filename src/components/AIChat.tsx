@@ -168,13 +168,9 @@ const AIChat: React.FC = () => {
 
   // Initialize authentication and user data
   useEffect(() => {
-    let mounted = true;
-    
     const initializeAuth = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (!mounted) return;
         
         if (sessionError) {
           console.error('Session error:', sessionError);
@@ -187,19 +183,15 @@ const AIChat: React.FC = () => {
         }
 
         if (!session?.user) {
-          if (mounted) {
-            setIsAuthenticated(false);
-            setUserId(null);
-            setUserOrgId(null);
-            setAuthLoaded(true);
-          }
+          setIsAuthenticated(false);
+          setUserId(null);
+          setUserOrgId(null);
+          setAuthLoaded(true);
           return;
         }
 
-        if (mounted) {
-          setIsAuthenticated(true);
-          setUserId(session.user.id);
-        }
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
         
         // Get user data from users table
         try {
@@ -208,8 +200,6 @@ const AIChat: React.FC = () => {
             .select('org_id')
             .eq('id', session.user.id)
             .single();
-
-          if (!mounted) return;
 
           if (userError) {
             if (userError.code === 'PGRST116') {
@@ -225,24 +215,18 @@ const AIChat: React.FC = () => {
           }
         } catch (userQueryError) {
           console.error('User query failed:', userQueryError);
-          if (mounted) {
-            setUserOrgId(null);
-          }
+          setUserOrgId(null);
         }
 
-        if (mounted) {
-          setAuthLoaded(true);
-        }
+        setAuthLoaded(true);
 
       } catch (error) {
         console.error('Auth initialization failed:', error);
-        if (mounted) {
-          setError('Failed to initialize user session');
-          setIsAuthenticated(false);
-          setUserId(null);
-          setUserOrgId(null);
-          setAuthLoaded(true);
-        }
+        setError('Failed to initialize user session');
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
+        setAuthLoaded(true);
       }
     };
 
@@ -250,8 +234,6 @@ const AIChat: React.FC = () => {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
       if (event === 'SIGNED_IN' && session?.user) {
         setIsAuthenticated(true);
         setUserId(session.user.id);
@@ -265,48 +247,39 @@ const AIChat: React.FC = () => {
             .eq('id', session.user.id)
             .single();
 
-          if (mounted) {
-            if (userError) {
-              if (userError.code === 'PGRST116') {
-                setUserOrgId(null);
-              } else {
-                console.error('User query error during auth change:', userError);
-                setUserOrgId(null);
-              }
-            } else if (userData) {
-              setUserOrgId(userData.org_id);
+          if (userError) {
+            if (userError.code === 'PGRST116') {
+              setUserOrgId(null);
             } else {
+              console.error('User query error during auth change:', userError);
               setUserOrgId(null);
             }
+          } else if (userData) {
+            setUserOrgId(userData.org_id);
+          } else {
+            setUserOrgId(null);
           }
         } catch (error) {
           console.error('Failed to fetch user data during auth change:', error);
-          if (mounted) {
-            setUserOrgId(null);
-          }
+          setUserOrgId(null);
         }
         
-        if (mounted) {
-          setAuthLoaded(true);
-        }
+        setAuthLoaded(true);
       } else if (event === 'SIGNED_OUT') {
-        if (mounted) {
-          setIsAuthenticated(false);
-          setUserId(null);
-          setUserOrgId(null);
-          setAvailableAssistants([]);
-          setSelectedAssistant(null);
-          setMessages([]);
-          setConversations([]);
-          setCurrentConversationId(null);
-          setError(null);
-          setAuthLoaded(true);
-        }
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
+        setAvailableAssistants([]);
+        setSelectedAssistant(null);
+        setMessages([]);
+        setConversations([]);
+        setCurrentConversationId(null);
+        setError(null);
+        setAuthLoaded(true);
       }
     });
 
     return () => {
-      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
