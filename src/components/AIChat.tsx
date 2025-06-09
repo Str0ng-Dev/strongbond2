@@ -1,7 +1,7 @@
 // File: src/components/AIChat.tsx
 // AI chat interface integrated with Supabase Edge Function
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, Heart, Book, Zap, Crown } from 'lucide-react';
 import { UserRole } from '../types/ai';
 
@@ -20,6 +20,7 @@ interface Assistant {
   icon: React.ComponentType<any>;
   color: string;
   description: string;
+  assistantId?: string; // Real database ID
 }
 
 const mockAssistants: Assistant[] = [
@@ -65,38 +66,88 @@ const AIChat: React.FC = () => {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('testing');
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [availableAssistants, setAvailableAssistants] = useState<Assistant[]>([]);
+  const [assistantsLoaded, setAssistantsLoaded] = useState(false);
 
   // Valid UUID for testing - in production, get from auth
   const userId = '39ce1d87-e47c-455c-951a-644a849b2a11';
 
-  // Mock assistant IDs - these should match your database
-  const assistantIdMap: Record<UserRole, string> = {
-    'Dad': 'f47ac10b-58cc-4372-a567-0e02b2c3d479', // Replace with actual assistant ID
-    'Mom': 'f47ac10b-58cc-4372-a567-0e02b2c3d480', // Replace with actual assistant ID
-    'Coach': 'f47ac10b-58cc-4372-a567-0e02b2c3d481', // Replace with actual assistant ID
-    'Son': 'f47ac10b-58cc-4372-a567-0e02b2c3d482', // Replace with actual assistant ID
-    'Daughter': 'f47ac10b-58cc-4372-a567-0e02b2c3d483', // Replace with actual assistant ID
-    'Single Man': 'f47ac10b-58cc-4372-a567-0e02b2c3d484', // Replace with actual assistant ID
-    'Single Woman': 'f47ac10b-58cc-4372-a567-0e02b2c3d485', // Replace with actual assistant ID
-    'Church Leader': 'f47ac10b-58cc-4372-a567-0e02b2c3d486' // Replace with actual assistant ID
+  // Fetch available assistants from database
+  const fetchAssistants = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/ai_assistants?is_active=eq.true&select=*`, {
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        const dbAssistants = await response.json();
+        
+        // Map database assistants to our UI assistants
+        const updatedAssistants = mockAssistants.map(assistant => {
+          const dbAssistant = dbAssistants.find((db: any) => db.user_role === assistant.role);
+          return {
+            ...assistant,
+            assistantId: dbAssistant?.id
+          };
+        }).filter(assistant => assistant.assistantId); // Only include assistants that exist in DB
+
+        setAvailableAssistants(updatedAssistants);
+        
+        if (updatedAssistants.length > 0) {
+          setSelectedAssistant(updatedAssistants[0]);
+        } else {
+          setError('No AI assistants are available. Please contact your administrator.');
+        }
+      } else {
+        throw new Error('Failed to fetch assistants');
+      }
+    } catch (error) {
+      console.error('Failed to fetch assistants:', error);
+      setError('Unable to load AI assistants. Using fallback mode.');
+      setAvailableAssistants(mockAssistants); // Fallback to mock assistants
+    } finally {
+      setAssistantsLoaded(true);
+    }
   };
 
-  // Initialize with welcome message
-  React.useEffect(() => {
-    const welcomeMessage: Message = {
-      id: 'welcome',
-      content: `Hello! I'm ${selectedAssistant.name}, your ${selectedAssistant.description}. I'm here to support you on your spiritual journey. How can I help you today?`,
-      sender: 'ai',
-      timestamp: new Date(),
-      role: selectedAssistant.role
-    };
-    setMessages([welcomeMessage]);
+  // Initialize component
+  useEffect(() => {
+    fetchAssistants();
+  }, []);
 
-    // Test Edge Function connection
-    testConnection();
-  }, [selectedAssistant]);
+  // Initialize with welcome message when assistant is selected
+  useEffect(() => {
+    if (selectedAssistant && assistantsLoaded) {
+      const welcomeMessage: Message = {
+        id: 'welcome',
+        content: `Hello! I'm ${selectedAssistant.name}, your ${selectedAssistant.description}. I'm here to support you on your spiritual journey. How can I help you today?`,
+        sender: 'ai',
+        timestamp: new Date(),
+        role: selectedAssistant.role
+      };
+      setMessages([welcomeMessage]);
+
+      // Test connection only if we have a real assistant ID
+      if (selectedAssistant.assistantId) {
+        testConnection();
+      } else {
+        setConnectionStatus('disconnected');
+        setError('This assistant is not configured in the database.');
+      }
+    }
+  }, [selectedAssistant, assistantsLoaded]);
 
   const testConnection = async () => {
+    if (!selectedAssistant.assistantId) {
+      setConnectionStatus('disconnected');
+      setError('Assistant not configured');
+      return;
+    }
+
     try {
       setConnectionStatus('testing');
       
@@ -110,7 +161,7 @@ const AIChat: React.FC = () => {
         body: JSON.stringify({
           user_id: userId,
           message: 'Hello',
-          assistant_id: assistantIdMap[selectedAssistant.role]
+          assistant_id: selectedAssistant.assistantId
         })
       });
 
@@ -134,7 +185,7 @@ const AIChat: React.FC = () => {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !selectedAssistant.assistantId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -159,7 +210,7 @@ const AIChat: React.FC = () => {
         body: JSON.stringify({
           user_id: userId,
           message: messageText,
-          assistant_id: assistantIdMap[selectedAssistant.role],
+          assistant_id: selectedAssistant.assistantId,
           conversation_id: conversationId
         })
       });
@@ -215,6 +266,37 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
+  if (!assistantsLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
+          <p className="text-gray-600">Loading AI assistants...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (availableAssistants.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center max-w-md">
+          <Bot className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No AI Assistants Available</h2>
+          <p className="text-gray-600 mb-4">
+            No active AI assistants were found in the database. Please contact your administrator to set up AI assistants.
+          </p>
+          <button 
+            onClick={fetchAssistants}
+            className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
@@ -253,7 +335,7 @@ const AIChat: React.FC = () => {
           <div className="mt-4">
             <p className="text-sm font-medium text-gray-700 mb-2">Choose your spiritual companion:</p>
             <div className="flex space-x-2 overflow-x-auto">
-              {mockAssistants.map((assistant) => {
+              {availableAssistants.map((assistant) => {
                 const IconComponent = assistant.icon;
                 return (
                   <button
@@ -264,11 +346,17 @@ const AIChat: React.FC = () => {
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
                         : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                     }`}
+                    disabled={!assistant.assistantId}
                   >
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${assistant.color}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                      assistant.assistantId ? assistant.color : 'bg-gray-400'
+                    }`}>
                       <IconComponent className="w-4 h-4 text-white" />
                     </div>
                     <span className="font-medium">{assistant.name}</span>
+                    {!assistant.assistantId && (
+                      <span className="text-xs text-red-500">(Not configured)</span>
+                    )}
                   </button>
                 );
               })}
@@ -337,18 +425,18 @@ const AIChat: React.FC = () => {
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
             placeholder={`Share your heart with ${selectedAssistant.name}...`}
             className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            disabled={isLoading}
+            disabled={isLoading || !selectedAssistant.assistantId}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || !selectedAssistant.assistantId}
             className="bg-purple-500 text-white p-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />
           </button>
         </div>
 
-        {connectionStatus === 'connected' && (
+        {connectionStatus === 'connected' && selectedAssistant.assistantId && (
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-700">
               <strong>Live Mode:</strong> Connected to OpenAI Assistants API via Supabase Edge Function.
@@ -365,9 +453,18 @@ const AIChat: React.FC = () => {
             <button 
               onClick={testConnection}
               className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+              disabled={!selectedAssistant.assistantId}
             >
               Retry Connection
             </button>
+          </div>
+        )}
+
+        {!selectedAssistant.assistantId && (
+          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-700">
+              <strong>Assistant Not Configured:</strong> This assistant needs to be set up in the database before it can be used.
+            </p>
           </div>
         )}
       </div>
