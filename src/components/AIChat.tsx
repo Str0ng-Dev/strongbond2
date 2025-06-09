@@ -141,11 +141,16 @@ const AIChat: React.FC = () => {
   const [assistantsLoaded, setAssistantsLoaded] = useState(false);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Test login function
   const handleTestLogin = async () => {
     try {
       setError(null);
+      setIsLoggingIn(true);
+      
+      console.log('Attempting test login...');
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email: 'gale@yocom.us',
         password: 'C0vetrix'
@@ -156,10 +161,13 @@ const AIChat: React.FC = () => {
         setError(`Login failed: ${error.message}`);
       } else {
         console.log('✅ Logged in:', data.user);
+        // The auth state change listener will handle the rest
       }
     } catch (loginError) {
       console.error('Login error:', loginError);
       setError('Login failed: Network error');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -167,18 +175,24 @@ const AIChat: React.FC = () => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        console.log('Initializing auth...');
+        
         // Get current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error('Session error:', sessionError);
           setError('Failed to get user session');
+          setIsAuthenticated(false);
+          setUserId(null);
+          setUserOrgId(null);
           setAuthLoaded(true);
           return;
         }
 
         if (!session?.user) {
           // No authenticated user
+          console.log('No authenticated user found');
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
@@ -187,6 +201,7 @@ const AIChat: React.FC = () => {
         }
 
         // User is authenticated
+        console.log('User authenticated:', session.user.id);
         setIsAuthenticated(true);
         setUserId(session.user.id);
         
@@ -196,19 +211,18 @@ const AIChat: React.FC = () => {
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle(); // Use maybeSingle instead of single to handle no rows
 
           if (userError) {
-            // Handle the specific case where user doesn't exist in users table
-            if (userError.code === 'PGRST116') {
-              console.log('User not found in users table, using null org_id');
-              setUserOrgId(null);
-            } else {
-              console.error('User query error:', userError);
-              setError('Failed to load user profile');
-            }
+            console.error('User query error:', userError);
+            // Continue with null org_id rather than failing
+            setUserOrgId(null);
           } else if (userData) {
+            console.log('User org_id:', userData.org_id);
             setUserOrgId(userData.org_id);
+          } else {
+            console.log('User not found in users table, using null org_id');
+            setUserOrgId(null);
           }
         } catch (userQueryError) {
           console.error('User query failed:', userQueryError);
@@ -220,6 +234,9 @@ const AIChat: React.FC = () => {
       } catch (error) {
         console.error('Auth initialization failed:', error);
         setError('Failed to initialize user session');
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
         setAuthLoaded(true);
       }
     };
@@ -233,6 +250,7 @@ const AIChat: React.FC = () => {
       if (event === 'SIGNED_IN' && session?.user) {
         setIsAuthenticated(true);
         setUserId(session.user.id);
+        setError(null); // Clear any previous errors
         
         // Get user org_id
         try {
@@ -240,10 +258,11 @@ const AIChat: React.FC = () => {
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
-          if (userError && userError.code !== 'PGRST116') {
+          if (userError) {
             console.error('User query error:', userError);
+            setUserOrgId(null);
           } else if (userData) {
             setUserOrgId(userData.org_id);
           } else {
@@ -253,6 +272,8 @@ const AIChat: React.FC = () => {
           console.error('Failed to fetch user data:', error);
           setUserOrgId(null);
         }
+        
+        setAuthLoaded(true);
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUserId(null);
@@ -263,6 +284,7 @@ const AIChat: React.FC = () => {
         setConversations([]);
         setCurrentConversationId(null);
         setError(null);
+        setAuthLoaded(true);
       }
     });
 
@@ -277,6 +299,7 @@ const AIChat: React.FC = () => {
 
     try {
       setError(null);
+      console.log('Fetching assistants for user:', userId, 'org:', userOrgId);
       
       // Query assistants available to user's org or global assistants
       let query = supabase
@@ -296,6 +319,8 @@ const AIChat: React.FC = () => {
       if (assistantError) {
         throw assistantError;
       }
+
+      console.log('Found assistants:', dbAssistants?.length || 0);
 
       // Map database assistants to UI assistants
       const mappedAssistants = mockAssistants.map(mockAssistant => {
@@ -558,6 +583,7 @@ const AIChat: React.FC = () => {
   // Initialize data when auth is loaded and user is authenticated
   useEffect(() => {
     if (authLoaded && userId && isAuthenticated) {
+      console.log('Auth loaded, fetching assistants...');
       fetchAssistants();
     }
   }, [authLoaded, userId, isAuthenticated, userOrgId]);
@@ -596,9 +622,17 @@ const AIChat: React.FC = () => {
           </p>
           <button 
             onClick={handleTestLogin}
-            className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto transition-colors"
+            disabled={isLoggingIn}
+            className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 disabled:bg-purple-300 disabled:cursor-not-allowed flex items-center space-x-2 mx-auto transition-colors"
           >
-            <span>Sign In (Test)</span>
+            {isLoggingIn ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Signing In...</span>
+              </>
+            ) : (
+              <span>Sign In (Test)</span>
+            )}
           </button>
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
