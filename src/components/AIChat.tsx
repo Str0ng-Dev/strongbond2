@@ -631,22 +631,34 @@ const testBody = {
     setError(null);
   };
 
-  // Initialize data when auth is loaded and user is authenticated
-  useEffect(() => {
-    if (authLoaded && userId && isAuthenticated && session) {
-      fetchAssistants();
-    }
-  }, [authLoaded, userId, isAuthenticated, userOrgId, session]);
+ // Initialize data when auth is loaded and user is authenticated
+useEffect(() => {
+  if (authLoaded && userId && isAuthenticated && session) {
+    fetchAssistants();
+  }
+}, [authLoaded, userId, isAuthenticated, userOrgId, session]);
 
-  // Load conversations when assistant is selected
-  useEffect(() => {
-    if (selectedAssistant && assistantsLoaded && isAuthenticated && session) {
-      fetchConversations();
-      if (selectedAssistant.assistantId) {
-        testConnection();
-      }
+// Load conversations when assistant is selected
+useEffect(() => {
+  if (selectedAssistant && assistantsLoaded && isAuthenticated && session) {
+    fetchConversations();
+    if (selectedAssistant.assistantId) {
+      testConnection();
     }
-  }, [selectedAssistant, assistantsLoaded, isAuthenticated, session]);
+  }
+}, [selectedAssistant, assistantsLoaded, isAuthenticated, session]);
+
+// ADD THIS NEW useEffect HERE:
+useEffect(() => {
+  const handleVisibilityChange = () => {
+    if (!document.hidden && isAuthenticated) {
+      console.log('👁️ Tab focus returned, skipping re-fetch to avoid timeouts');
+    }
+  };
+  
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+}, [isAuthenticated]);
 
   // Loading screen
   if (!authLoaded) {
