@@ -215,18 +215,31 @@ const AIChat: React.FC = () => {
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
-      console.log('🔐 Auth state changed:', event, session?.user?.id);
-      
-      clearTimeout(authTimeout);
-      setSession(session);
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        console.log('🔐 User signed in:', session.user.id);
-        setIsAuthenticated(true);
-        setUserId(session.user.id);
+   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+  if (!mounted) return;
+  
+  console.log('🔐 Auth state changed:', event, session?.user?.id);
+  
+  clearTimeout(authTimeout);
+  setSession(session);
+  
+  // ✅ ADD THIS CHECK - Skip if already authenticated and session exists
+  if (event === 'INITIAL_SESSION' && isAuthenticated && session?.user?.id === userId) {
+    console.log('🔐 Skipping re-initialization - user already authenticated');
+    return;
+  }
+  
+  if (event === 'SIGNED_IN' && session?.user) {
+    // ✅ ADD THIS CHECK - Skip if same user
+    if (session.user.id === userId && isAuthenticated) {
+      console.log('🔐 Skipping re-initialization - same user already signed in');
+      return;
+    }
+    
+    console.log('🔐 User signed in:', session.user.id);
+    setIsAuthenticated(true);
+    setUserId(session.user.id);
+    // ... rest of your existing code
         setError(null);
         setUserOrgId(null);
         
