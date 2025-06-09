@@ -1,5 +1,5 @@
 // File: src/components/AIChat.tsx
-// Simple AI chat interface for testing Edge Functions
+// AI chat interface integrated with Supabase Edge Function
 
 import React, { useState } from 'react';
 import { Send, Bot, User, Heart, Book, Zap, Crown } from 'lucide-react';
@@ -63,6 +63,11 @@ const AIChat: React.FC = () => {
   const [selectedAssistant, setSelectedAssistant] = useState(mockAssistants[0]);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('testing');
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Mock user ID - in production, get from auth
+  const userId = 'mock-user-id';
 
   // Initialize with welcome message
   React.useEffect(() => {
@@ -75,11 +80,40 @@ const AIChat: React.FC = () => {
     };
     setMessages([welcomeMessage]);
 
-    // Simulate connection test
-    setTimeout(() => {
-      setConnectionStatus('disconnected'); // Will be 'connected' when Edge Function is ready
-    }, 1000);
+    // Test Edge Function connection
+    testConnection();
   }, [selectedAssistant]);
+
+  const testConnection = async () => {
+    try {
+      setConnectionStatus('testing');
+      
+      // Test with a simple message
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: 'test-user',
+          message: 'Hello',
+          assistantRole: selectedAssistant.role
+        })
+      });
+
+      if (response.ok) {
+        setConnectionStatus('connected');
+        setError(null);
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      setConnectionStatus('disconnected');
+      setError(error instanceof Error ? error.message : 'Connection failed');
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -94,32 +128,55 @@ const AIChat: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setError(null);
 
     try {
-      // TODO: Replace with actual Edge Function call
-      // const response = await aiService.sendMessage(conversationId, input);
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-send-message`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId,
+          userId,
+          message: input,
+          assistantRole: selectedAssistant.role
+        })
+      });
 
-      // Mock response for now
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
 
-      const mockResponses = {
-        'Dad': `As a father, I understand the challenges you're facing. God has given us wisdom through experience, and I want to share that with you. Remember, His strength is made perfect in our weakness.`,
-        'Mom': `I hear your heart in those words, dear. God sees every tear and every joy. Let's explore this together with His love guiding us. Your feelings are so valid and important.`,
-        'Coach': `That's the spirit! I love seeing someone ready to grow and take action. God has given you incredible potential - let's break this down and create some action steps to move forward!`,
-        'Son': `Hey, I totally get what you're saying! Growing in faith has its challenges, but we're in this together. God has amazing plans for us, and I'm excited to see how He works in your life!`
-      };
+      const data = await response.json();
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: mockResponses[selectedAssistant.role as keyof typeof mockResponses] || `Thank you for sharing that with me. How can I support you further in your faith journey?`,
-        sender: 'ai',
-        timestamp: new Date(),
-        role: selectedAssistant.role
-      };
+      if (data.success) {
+        // Update conversation ID if this is a new conversation
+        if (data.conversationId && !conversationId) {
+          setConversationId(data.conversationId);
+        }
 
-      setMessages(prev => [...prev, aiMessage]);
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: data.message,
+          sender: 'ai',
+          timestamp: new Date(),
+          role: selectedAssistant.role
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+        setConnectionStatus('connected');
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
+
     } catch (error) {
       console.error('Send message failed:', error);
+      setConnectionStatus('disconnected');
+      setError(error instanceof Error ? error.message : 'Unknown error');
+      
       const errorMessage: Message = {
         id: 'error-' + Date.now(),
         content: 'I apologize, but I encountered an issue. Please try again.',
@@ -135,6 +192,8 @@ const AIChat: React.FC = () => {
   const switchAssistant = (assistant: Assistant) => {
     setSelectedAssistant(assistant);
     setMessages([]); // Clear messages when switching
+    setConversationId(null); // Reset conversation
+    setError(null);
   };
 
   return (
@@ -147,7 +206,7 @@ const AIChat: React.FC = () => {
               <Bot className="w-8 h-8 text-purple-600" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">StrongBond AI Assistants</h1>
-                <p className="text-sm text-gray-600">Testing family role personalities</p>
+                <p className="text-sm text-gray-600">OpenAI-powered spiritual companions</p>
               </div>
             </div>
 
@@ -157,10 +216,19 @@ const AIChat: React.FC = () => {
               'bg-yellow-100 text-yellow-700'
             }`}>
               {connectionStatus === 'connected' ? '🟢 Edge Function Ready' :
-               connectionStatus === 'disconnected' ? '🔴 Mock Mode' :
+               connectionStatus === 'disconnected' ? '🔴 Connection Failed' :
                '🟡 Testing...'}
             </div>
           </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">
+                <strong>Error:</strong> {error}
+              </p>
+            </div>
+          )}
 
           {/* Assistant Selector */}
           <div className="mt-4">
@@ -261,11 +329,26 @@ const AIChat: React.FC = () => {
           </button>
         </div>
 
-        {connectionStatus === 'disconnected' && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-700">
-              <strong>Demo Mode:</strong> Currently using mock responses. Deploy the Edge Function to enable real AI conversations with family personalities.
+        {connectionStatus === 'connected' && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-700">
+              <strong>Live Mode:</strong> Connected to OpenAI Assistants API via Supabase Edge Function.
+              {conversationId && <span className="ml-2">Conversation ID: {conversationId.substring(0, 8)}...</span>}
             </p>
+          </div>
+        )}
+
+        {connectionStatus === 'disconnected' && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-700">
+              <strong>Connection Issue:</strong> Unable to reach the AI service. Please check your configuration and try again.
+            </p>
+            <button 
+              onClick={testConnection}
+              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+            >
+              Retry Connection
+            </button>
           </div>
         )}
       </div>
