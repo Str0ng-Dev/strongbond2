@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw, LogIn } from 'lucide-react';
+import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
 import { UserRole } from '../types/ai';
 import { createClient } from '@supabase/supabase-js';
 
@@ -534,25 +534,6 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // 10. Handle login
-  const handleLogin = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      
-      if (error) {
-        setError('Failed to initiate login: ' + error.message);
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      setError('Login failed. Please try again.');
-    }
-  };
-
   // Initialize data when auth is loaded and user is authenticated
   useEffect(() => {
     if (authLoaded && userId && isAuthenticated) {
@@ -593,11 +574,9 @@ const AIChat: React.FC = () => {
             Please sign in to access your AI spiritual companions and continue your faith journey.
           </p>
           <button 
-            onClick={handleLogin}
             className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto"
           >
-            <LogIn className="w-5 h-5" />
-            <span>Sign In with Google</span>
+            <span>Sign In</span>
           </button>
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
