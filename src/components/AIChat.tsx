@@ -3,6 +3,12 @@ import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucid
 import { UserRole } from '../types/ai';
 import { createClient } from '@supabase/supabase-js';
 
+// FIX 1: Move Supabase client outside component to prevent multiple instances
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
 interface Message {
   id: string;
   content: string;
@@ -115,12 +121,6 @@ const mockAssistants: Omit<Assistant, 'assistantId'>[] = [
 ];
 
 const AIChat: React.FC = () => {
-  // Initialize Supabase client
-  const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-  );
-
   // State management
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -171,7 +171,7 @@ const AIChat: React.FC = () => {
     }
   };
 
-  // 1. Initialize authentication and user data
+  // FIX 2: Improved authentication initialization with proper error handling
   useEffect(() => {
     const initializeAuth = async () => {
       try {
@@ -186,7 +186,7 @@ const AIChat: React.FC = () => {
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
-          setAuthLoaded(true);
+          setAuthLoaded(true); // CRITICAL: Always set authLoaded
           return;
         }
 
@@ -196,7 +196,7 @@ const AIChat: React.FC = () => {
           setIsAuthenticated(false);
           setUserId(null);
           setUserOrgId(null);
-          setAuthLoaded(true);
+          setAuthLoaded(true); // CRITICAL: Always set authLoaded
           return;
         }
 
@@ -205,23 +205,29 @@ const AIChat: React.FC = () => {
         setIsAuthenticated(true);
         setUserId(session.user.id);
         
-        // Try to get user data from the users table
+        // FIX 3: Better user data handling with proper error recovery
         try {
           const { data: userData, error: userError } = await supabase
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
-            .maybeSingle(); // Use maybeSingle instead of single to handle no rows
+            .single(); // FIXED: Use .single() instead of .maybeSingle()
 
           if (userError) {
             console.error('User query error:', userError);
-            // Continue with null org_id rather than failing
-            setUserOrgId(null);
+            // If user doesn't exist in users table, this is expected for new users
+            if (userError.code === 'PGRST116') { // No rows returned
+              console.log('User not found in users table, using null org_id');
+              setUserOrgId(null);
+            } else {
+              console.error('Unexpected user query error:', userError);
+              setUserOrgId(null);
+            }
           } else if (userData) {
             console.log('User org_id:', userData.org_id);
             setUserOrgId(userData.org_id);
           } else {
-            console.log('User not found in users table, using null org_id');
+            console.log('No user data returned, using null org_id');
             setUserOrgId(null);
           }
         } catch (userQueryError) {
@@ -230,20 +236,21 @@ const AIChat: React.FC = () => {
           setUserOrgId(null);
         }
 
-        setAuthLoaded(true);
+        setAuthLoaded(true); // CRITICAL: Always set authLoaded after processing
+
       } catch (error) {
         console.error('Auth initialization failed:', error);
         setError('Failed to initialize user session');
         setIsAuthenticated(false);
         setUserId(null);
         setUserOrgId(null);
-        setAuthLoaded(true);
+        setAuthLoaded(true); // CRITICAL: Always set authLoaded even on error
       }
     };
 
     initializeAuth();
 
-    // Listen for auth state changes
+    // FIX 4: Improved auth state change handler
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session?.user?.id);
       
@@ -252,28 +259,33 @@ const AIChat: React.FC = () => {
         setUserId(session.user.id);
         setError(null); // Clear any previous errors
         
-        // Get user org_id
+        // Get user org_id with improved error handling
         try {
           const { data: userData, error: userError } = await supabase
             .from('users')
             .select('org_id')
             .eq('id', session.user.id)
-            .maybeSingle();
+            .single(); // FIXED: Use .single() instead of .maybeSingle()
 
           if (userError) {
-            console.error('User query error:', userError);
-            setUserOrgId(null);
+            if (userError.code === 'PGRST116') { // No rows returned
+              console.log('User not found in users table during auth change');
+              setUserOrgId(null);
+            } else {
+              console.error('User query error during auth change:', userError);
+              setUserOrgId(null);
+            }
           } else if (userData) {
             setUserOrgId(userData.org_id);
           } else {
             setUserOrgId(null);
           }
         } catch (error) {
-          console.error('Failed to fetch user data:', error);
+          console.error('Failed to fetch user data during auth change:', error);
           setUserOrgId(null);
         }
         
-        setAuthLoaded(true);
+        setAuthLoaded(true); // CRITICAL: Set authLoaded on sign in
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUserId(null);
@@ -284,14 +296,14 @@ const AIChat: React.FC = () => {
         setConversations([]);
         setCurrentConversationId(null);
         setError(null);
-        setAuthLoaded(true);
+        setAuthLoaded(true); // CRITICAL: Set authLoaded on sign out
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, []); // FIXED: Empty dependency array since supabase is now outside component
 
   // 2. Fetch available assistants based on user's org
   const fetchAssistants = async () => {
@@ -348,7 +360,7 @@ const AIChat: React.FC = () => {
       console.error('Failed to fetch assistants:', error);
       setError('Unable to load AI assistants. Please try again.');
     } finally {
-      setAssistantsLoaded(true);
+      setAssistantsLoaded(true); // CRITICAL: Always set assistantsLoaded
     }
   };
 
@@ -385,7 +397,7 @@ const AIChat: React.FC = () => {
       console.error('Failed to fetch conversations:', error);
       setError('Unable to load conversation history.');
     } finally {
-      setConversationsLoaded(true);
+      setConversationsLoaded(true); // CRITICAL: Always set conversationsLoaded
     }
   };
 
@@ -598,14 +610,16 @@ const AIChat: React.FC = () => {
     }
   }, [selectedAssistant, assistantsLoaded, isAuthenticated]);
 
-  // Debug logging for auth state
+  // IMPROVED: Debug logging for auth state
   console.log('Auth State Debug:', {
     authLoaded,
     isAuthenticated,
     userId: userId?.substring(0, 8) + '...',
     userOrgId: userOrgId?.substring(0, 8) + '...',
     assistantsLoaded,
-    availableAssistants: availableAssistants.length
+    availableAssistants: availableAssistants.length,
+    supabaseUrl: !!import.meta.env.VITE_SUPABASE_URL,
+    supabaseKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
   });
 
   // Loading screen
@@ -616,6 +630,17 @@ const AIChat: React.FC = () => {
           <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600">Loading...</p>
           <p className="text-xs text-gray-400 mt-2">Checking authentication...</p>
+          
+          {/* IMPROVED: Better debug info in loading state */}
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left max-w-md">
+            <p className="text-xs text-blue-700 font-medium mb-2">Debug Info:</p>
+            <div className="text-xs text-blue-600 space-y-1">
+              <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅' : '❌'}</div>
+              <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅' : '❌'}</div>
+              <div>Auth Loaded: {authLoaded ? '✅' : '⏳'}</div>
+              <div>Is Authenticated: {isAuthenticated ? '✅' : '❌'}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
