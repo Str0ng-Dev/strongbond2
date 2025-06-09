@@ -498,7 +498,7 @@ const AIChat: React.FC = () => {
       
       // ✅ Fixed field names to match edge function expectations
      const requestBody = {
-  user_id: userId,           // ❌ Change to: userId: userId,
+  userId: userId,           // ❌ Change to: userId: userId,
   message: messageText,      
   assistantRole: selectedAssistant.role,  
   conversation_id: currentConversationId  // ❌ Change to: conversationId: currentConversationId
