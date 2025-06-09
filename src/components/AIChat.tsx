@@ -142,6 +142,27 @@ const AIChat: React.FC = () => {
   const [authLoaded, setAuthLoaded] = useState(false);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
 
+  // Test login function
+  const handleTestLogin = async () => {
+    try {
+      setError(null);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: 'gale@yocom.us',
+        password: 'C0vetrix'
+      });
+
+      if (error) {
+        console.error('Login failed:', error.message);
+        setError(`Login failed: ${error.message}`);
+      } else {
+        console.log('✅ Logged in:', data.user);
+      }
+    } catch (loginError) {
+      console.error('Login error:', loginError);
+      setError('Login failed: Network error');
+    }
+  };
+
   // 1. Initialize authentication and user data
   useEffect(() => {
     const initializeAuth = async () => {
@@ -574,9 +595,10 @@ const AIChat: React.FC = () => {
             Please sign in to access your AI spiritual companions and continue your faith journey.
           </p>
           <button 
-            className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto"
+            onClick={handleTestLogin}
+            className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto transition-colors"
           >
-            <span>Sign In</span>
+            <span>Sign In (Test)</span>
           </button>
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
