@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw } from 'lucide-react';
+import { Send, Bot, User, Heart, Book, Zap, Crown, Plus, RefreshCw, LogIn } from 'lucide-react';
 import { UserRole } from '../types/ai';
 import { createClient } from '@supabase/supabase-js';
 
@@ -135,6 +135,7 @@ const AIChat: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [userOrgId, setUserOrgId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   
   // Loading states
   const [assistantsLoaded, setAssistantsLoaded] = useState(false);
@@ -145,19 +146,53 @@ const AIChat: React.FC = () => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // For development, use a test user ID
-        const testUserId = '39ce1d87-e47c-455c-951a-644a849b2a11';
-        setUserId(testUserId);
+        // Get current session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          setError('Failed to get user session');
+          setAuthLoaded(true);
+          return;
+        }
+
+        if (!session?.user) {
+          // No authenticated user
+          setIsAuthenticated(false);
+          setUserId(null);
+          setUserOrgId(null);
+          setAuthLoaded(true);
+          return;
+        }
+
+        // User is authenticated
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
         
         // Try to get user data from the users table
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('org_id')
-          .eq('id', testUserId)
-          .single();
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('org_id')
+            .eq('id', session.user.id)
+            .single();
 
-        if (!userError && userData) {
-          setUserOrgId(userData.org_id);
+          if (userError) {
+            // Handle the specific case where user doesn't exist in users table
+            if (userError.code === 'PGRST116') {
+              console.log('User not found in users table, using null org_id');
+              setUserOrgId(null);
+            } else {
+              console.error('User query error:', userError);
+              setError('Failed to load user profile');
+            }
+          } else if (userData) {
+            setUserOrgId(userData.org_id);
+          }
+        } catch (userQueryError) {
+          console.error('User query failed:', userQueryError);
+          // Continue with null org_id rather than failing completely
+          setUserOrgId(null);
         }
 
         setAuthLoaded(true);
@@ -169,11 +204,55 @@ const AIChat: React.FC = () => {
     };
 
     initializeAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
+        
+        // Get user org_id
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('org_id')
+            .eq('id', session.user.id)
+            .single();
+
+          if (userError && userError.code !== 'PGRST116') {
+            console.error('User query error:', userError);
+          } else if (userData) {
+            setUserOrgId(userData.org_id);
+          } else {
+            setUserOrgId(null);
+          }
+        } catch (error) {
+          console.error('Failed to fetch user data:', error);
+          setUserOrgId(null);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+        setUserId(null);
+        setUserOrgId(null);
+        setAvailableAssistants([]);
+        setSelectedAssistant(null);
+        setMessages([]);
+        setConversations([]);
+        setCurrentConversationId(null);
+        setError(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // 2. Fetch available assistants based on user's org
   const fetchAssistants = async () => {
-    if (!userId) return;
+    if (!userId || !isAuthenticated) return;
 
     try {
       setError(null);
@@ -229,7 +308,7 @@ const AIChat: React.FC = () => {
 
   // 3. Fetch conversations for selected assistant
   const fetchConversations = async () => {
-    if (!userId || !selectedAssistant?.assistantId) return;
+    if (!userId || !isAuthenticated || !selectedAssistant?.assistantId) return;
 
     try {
       const { data: convData, error: convError } = await supabase
@@ -266,6 +345,8 @@ const AIChat: React.FC = () => {
 
   // 4. Load specific conversation and its messages
   const loadConversation = async (conversationId: string) => {
+    if (!userId || !isAuthenticated) return;
+
     try {
       setIsLoading(true);
       setCurrentConversationId(conversationId);
@@ -324,7 +405,7 @@ const AIChat: React.FC = () => {
 
   // 7. Send message to AI
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId) return;
+    if (!input.trim() || isLoading || !selectedAssistant?.assistantId || !userId || !isAuthenticated) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -402,7 +483,7 @@ const AIChat: React.FC = () => {
 
   // 8. Test connection
   const testConnection = async () => {
-    if (!selectedAssistant?.assistantId || !userId) {
+    if (!selectedAssistant?.assistantId || !userId || !isAuthenticated) {
       setConnectionStatus('disconnected');
       setError('Assistant not configured or user not authenticated');
       return;
@@ -453,25 +534,83 @@ const AIChat: React.FC = () => {
     setError(null);
   };
 
-  // Initialize data when auth is loaded
+  // 10. Handle login
+  const handleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      
+      if (error) {
+        setError('Failed to initiate login: ' + error.message);
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      setError('Login failed. Please try again.');
+    }
+  };
+
+  // Initialize data when auth is loaded and user is authenticated
   useEffect(() => {
-    if (authLoaded && userId) {
+    if (authLoaded && userId && isAuthenticated) {
       fetchAssistants();
     }
-  }, [authLoaded, userId, userOrgId]);
+  }, [authLoaded, userId, isAuthenticated, userOrgId]);
 
   // Load conversations when assistant is selected
   useEffect(() => {
-    if (selectedAssistant && assistantsLoaded) {
+    if (selectedAssistant && assistantsLoaded && isAuthenticated) {
       fetchConversations();
       if (selectedAssistant.assistantId) {
         testConnection();
       }
     }
-  }, [selectedAssistant, assistantsLoaded]);
+  }, [selectedAssistant, assistantsLoaded, isAuthenticated]);
 
   // Loading screen
-  if (!authLoaded || !assistantsLoaded) {
+  if (!authLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center max-w-md">
+          <Bot className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Welcome to StrongBond AI</h2>
+          <p className="text-gray-600 mb-6">
+            Please sign in to access your AI spiritual companions and continue your faith journey.
+          </p>
+          <button 
+            onClick={handleLogin}
+            className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 flex items-center space-x-2 mx-auto"
+          >
+            <LogIn className="w-5 h-5" />
+            <span>Sign In with Google</span>
+          </button>
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Loading assistants
+  if (!assistantsLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
@@ -537,6 +676,12 @@ const AIChat: React.FC = () => {
                 {connectionStatus === 'connected' ? '🟢 Connected' :
                  connectionStatus === 'disconnected' ? '🔴 Disconnected' :
                  '🟡 Testing...'}
+              </div>
+
+              {/* User Info */}
+              <div className="text-xs text-gray-500">
+                User: {userId?.substring(0, 8)}...
+                {userOrgId && <span className="ml-1">(Org: {userOrgId.substring(0, 8)}...)</span>}
               </div>
             </div>
           </div>
@@ -667,11 +812,11 @@ const AIChat: React.FC = () => {
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
             placeholder={selectedAssistant ? `Share your heart with ${selectedAssistant.name}...` : 'Select an assistant to start chatting...'}
             className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            disabled={isLoading || !selectedAssistant?.assistantId}
+            disabled={isLoading || !selectedAssistant?.assistantId || !isAuthenticated}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading || !selectedAssistant?.assistantId}
+            disabled={!input.trim() || isLoading || !selectedAssistant?.assistantId || !isAuthenticated}
             className="bg-purple-500 text-white p-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />
@@ -679,7 +824,7 @@ const AIChat: React.FC = () => {
         </div>
 
         {/* Status Messages */}
-        {connectionStatus === 'connected' && selectedAssistant?.assistantId && (
+        {connectionStatus === 'connected' && selectedAssistant?.assistantId && isAuthenticated && (
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-700">
               <strong>Live Mode:</strong> Connected to OpenAI Assistants API via Supabase Edge Function.
@@ -696,7 +841,7 @@ const AIChat: React.FC = () => {
             <button 
               onClick={testConnection}
               className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-              disabled={!selectedAssistant?.assistantId}
+              disabled={!selectedAssistant?.assistantId || !isAuthenticated}
             >
               Retry Connection
             </button>
@@ -707,6 +852,14 @@ const AIChat: React.FC = () => {
           <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-700">
               <strong>Assistant Not Configured:</strong> This assistant needs to be set up in the database before it can be used.
+            </p>
+          </div>
+        )}
+
+        {!isAuthenticated && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-700">
+              <strong>Authentication Required:</strong> Please sign in to use the AI assistants.
             </p>
           </div>
         )}
