@@ -46,7 +46,9 @@ interface DBMessage {
   content: string;
   created_at: string;
 }
-
+// Add these with your other state declarations
+const [isInitializing, setIsInitializing] = useState(false);
+const [lastAuthEvent, setLastAuthEvent] = useState<string | null>(null);
 const mockAssistants: Omit<Assistant, 'assistantId'>[] = [
   {
     id: '1',
