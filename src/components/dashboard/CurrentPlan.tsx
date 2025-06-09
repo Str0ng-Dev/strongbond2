@@ -56,6 +56,9 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
       setIsLoading(true);
       setError(null);
 
+      // First, ensure only one plan is active by fixing any data inconsistencies
+      await ensureSingleActivePlan(user_id);
+
       // Get the user's active devotional plan
       const { data: planData, error: planError } = await supabase
         .from('user_devotional_plan')
@@ -91,6 +94,49 @@ const CurrentPlan: React.FC<CurrentPlanProps> = ({ onPlanChange }) => {
       setError('An unexpected error occurred');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Helper function to ensure only one plan is active
+  const ensureSingleActivePlan = async (userId: string) => {
+    try {
+      // Get all active plans for this user
+      const { data: activePlans, error: activeError } = await supabase
+        .from('user_devotional_plan')
+        .select('id, updated_at')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false });
+
+      if (activeError) {
+        console.error('Error checking active plans:', activeError);
+        return;
+      }
+
+      // If there are multiple active plans, keep only the most recently updated one
+      if (activePlans && activePlans.length > 1) {
+        console.log(`Found ${activePlans.length} active plans, fixing...`);
+        
+        const mostRecentPlan = activePlans[0];
+        const plansToDeactivate = activePlans.slice(1).map(plan => plan.id);
+
+        // Deactivate all but the most recent plan
+        const { error: deactivateError } = await supabase
+          .from('user_devotional_plan')
+          .update({ 
+            is_active: false,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', plansToDeactivate);
+
+        if (deactivateError) {
+          console.error('Error deactivating duplicate plans:', deactivateError);
+        } else {
+          console.log(`Deactivated ${plansToDeactivate.length} duplicate active plans`);
+        }
+      }
+    } catch (err) {
+      console.error('Error ensuring single active plan:', err);
     }
   };
 
