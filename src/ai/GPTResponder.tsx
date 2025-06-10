@@ -11,7 +11,7 @@ export default function GPTResponder() {
   const sendMessage = async () => {
     if (!user) return;
     setLoading(true);
-    const res = await fetch('/functions/v1/ai-sendMessage', {
+      const res = await fetch('/functions/v1/ai-sendMessage', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
