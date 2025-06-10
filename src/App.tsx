@@ -8,6 +8,7 @@ function App() {
   return (
     <SessionContextProvider supabaseClient={supabase}>
       <div className="h-screen w-full">
+       <AIChat />
         <GPTResponder />
       </div>
     </SessionContextProvider>
