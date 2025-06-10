@@ -69,7 +69,10 @@ export const useConversations = ({
 
     try {
       console.log('💬 Fetching conversations...');
-      
+      console.log('Emotion:', data.metadata?.emotion);
+      console.log('Is Prayer:', data.metadata?.is_prayer);
+      console.log('Assistant:', data.assistant?.name);
+      console.log('✅ Full AI Response from Edge:', data);
       const query = supabase
         .from('ai_conversations')
         .select('id, title, last_message_at, created_at')
